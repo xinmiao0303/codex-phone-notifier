@@ -1,0 +1,11 @@
+# Only source and example configuration belong in this repository.
+ntfy-codex.json
+hooks.json
+config.toml
+*.log
+*.zip
+.env
+.env.*
+backups/
+work/
+test-results/

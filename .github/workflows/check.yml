@@ -1,0 +1,22 @@
+name: Windows verification
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shell: [powershell, pwsh]
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Check installation and notification behavior
+        shell: ${{ matrix.shell }}
+        run: .\tests\run.ps1
