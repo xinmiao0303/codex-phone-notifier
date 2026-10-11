@@ -42,21 +42,21 @@ public static class NotifierIconBuilder {
         return body;
     }
     static Pen Outline(Color color,float width) { Pen pen=new Pen(color,width); pen.StartCap=LineCap.Round; pen.EndCap=LineCap.Round; pen.LineJoin=LineJoin.Round; return pen; }
-    static Bitmap Frame(int size,string data) {
+    static Bitmap Frame(int size,string data,bool taskbar) {
         int render=size*4; Bitmap high=new Bitmap(render,render,PixelFormat.Format32bppArgb);
         using(Graphics g=Graphics.FromImage(high)) {
             g.SmoothingMode=SmoothingMode.AntiAlias; g.Clear(Color.Transparent); g.ScaleTransform(render/256f,render/256f);
-            GraphicsState main=g.Save(); g.TranslateTransform(7,6); g.ScaleTransform(9.5f,9.5f);
+            GraphicsState main=g.Save(); g.TranslateTransform(taskbar?3:7,taskbar?2:6); g.ScaleTransform(taskbar?10:9.5f,taskbar?10:9.5f);
             using(GraphicsPath knot=Knot(data))
             using(Pen edge=Outline(Color.FromArgb(245,245,245),0.28f))
-            using(SolidBrush fill=new SolidBrush(Color.FromArgb(24,24,24))) { g.DrawPath(edge,knot); g.FillPath(fill,knot); }
+            using(SolidBrush fill=new SolidBrush(taskbar?Color.FromArgb(248,250,252):Color.FromArgb(24,24,24))) { if(!taskbar) g.DrawPath(edge,knot); g.FillPath(fill,knot); }
             g.Restore(main);
             // 铃铛直接叠放在右下角；白色轮廓帮助它与主体分开，没有圆形或方形底。
-            GraphicsState corner=g.Save(); g.TranslateTransform(154,158); g.ScaleTransform(4,4);
+            GraphicsState corner=g.Save(); g.TranslateTransform(taskbar?161:154,taskbar?160:158); g.ScaleTransform(4,4);
             using(GraphicsPath bell=Bell())
-            using(Pen halo=Outline(Color.FromArgb(250,250,250),3.1f))
+            using(Pen halo=Outline(taskbar?Color.FromArgb(35,39,45):Color.FromArgb(250,250,250),3.1f))
             using(Pen ink=Outline(Color.FromArgb(60,42,15),1.15f))
-            using(SolidBrush gold=new SolidBrush(Color.FromArgb(245,177,45))) {
+            using(SolidBrush gold=new SolidBrush(taskbar?Color.FromArgb(255,204,92):Color.FromArgb(245,177,45))) {
                 g.DrawPath(halo,bell); g.DrawArc(halo,10,18,4,4,150,-120);
                 g.FillPath(gold,bell); g.DrawPath(ink,bell); g.DrawArc(ink,10,18,4,4,150,-120);
             }
@@ -68,9 +68,9 @@ public static class NotifierIconBuilder {
         for(int y=0;y<size;y++) for(int x=0;x<size;x++) if(final.GetPixel(x,y).A<16) final.SetPixel(x,y,Color.Transparent);
         high.Dispose(); return final;
     }
-    public static void Write(string icon,string png,string data) {
+    public static void Write(string icon,string png,string data,bool taskbar) {
         int[] sizes={16,24,32,48,64,128,256}; List<byte[]> frames=new List<byte[]>();
-        foreach(int size in sizes) using(Bitmap image=Frame(size,data)) using(MemoryStream stream=new MemoryStream()) { image.Save(stream,ImageFormat.Png); frames.Add(stream.ToArray()); if(size==256) image.Save(png,ImageFormat.Png); }
+        foreach(int size in sizes) using(Bitmap image=Frame(size,data,taskbar)) using(MemoryStream stream=new MemoryStream()) { image.Save(stream,ImageFormat.Png); frames.Add(stream.ToArray()); if(size==256) image.Save(png,ImageFormat.Png); }
         using(BinaryWriter writer=new BinaryWriter(File.Create(icon))) {
             writer.Write((ushort)0); writer.Write((ushort)1); writer.Write((ushort)sizes.Length);
             int offset=6+sizes.Length*16;
@@ -83,4 +83,5 @@ public static class NotifierIconBuilder {
 }
 [xml]$svg = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'assets/openai.svg') -Raw
 $knotData = $svg.svg.path.GetAttribute('d')
-[NotifierIconBuilder]::Write((Join-Path $PSScriptRoot 'assets/notifier.ico'),(Join-Path $PSScriptRoot 'assets/notifier.png'),$knotData)
+[NotifierIconBuilder]::Write((Join-Path $PSScriptRoot 'assets/notifier.ico'),(Join-Path $PSScriptRoot 'assets/notifier.png'),$knotData,$false)
+[NotifierIconBuilder]::Write((Join-Path $PSScriptRoot 'assets/taskbar-light.ico'),(Join-Path $PSScriptRoot 'assets/taskbar-light.png'),$knotData,$true)

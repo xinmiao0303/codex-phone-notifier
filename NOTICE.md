@@ -8,7 +8,7 @@
 
 ## 软件图标
 
-图标采用透明背景，以 OpenAI / ChatGPT 结形标志为主体，右下角为金色铃铛，没有蓝色底板。已生成 16、24、32、48、64、128、256 像素的 Windows 图标。
+图标采用透明背景，以 OpenAI / ChatGPT 结形标志为主体，右下角为金色铃铛，没有蓝色底板。已生成 16、24、32、48、64、128、256 像素的 Windows 图标。窗口标题栏使用深色主体，任务栏及 Alt+Tab 使用主体稍大的浅色版本，两者均为透明背景。
 
 结形 SVG 来自 [Lobe Icons 官方仓库](https://github.com/lobehub/lobe-icons/blob/master/packages/static-svg/icons/openai.svg)。图标库使用 MIT 许可，全文保存在 [desktop/assets/LOBE-ICONS-LICENSE.txt](desktop/assets/LOBE-ICONS-LICENSE.txt)。OpenAI / ChatGPT 标志和商标属于 OpenAI；开源许可不授予商标权，不表示本项目获得官方认可。品牌使用说明见 [OpenAI 官方页面](https://openai.com/brand/)。
 

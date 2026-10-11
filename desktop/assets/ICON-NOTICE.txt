@@ -1,6 +1,7 @@
 Codex 手机提醒 — 图标来源
 
 图标采用透明背景：OpenAI / ChatGPT 结形标志为主体，右下角为金色铃铛。
+窗口标题栏使用原来的深色主体；任务栏与 Alt+Tab 使用稍大的浅色主体。
 
 结形 SVG：Lobe Icons（LobeHub），MIT 许可。
 https://github.com/lobehub/lobe-icons

@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
@@ -12,8 +13,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("Codex 手机提醒")]
 [assembly: AssemblyDescription("ntfy 与微信 ClawBot 的 Windows 图形配置工具")]
-[assembly: AssemblyVersion("0.4.1.0")]
-[assembly: AssemblyFileVersion("0.4.1.0")]
+[assembly: AssemblyVersion("0.4.2.0")]
+[assembly: AssemblyFileVersion("0.4.2.0")]
 
 namespace CodexPhoneNotifier
 {
@@ -37,7 +38,7 @@ namespace CodexPhoneNotifier
             using (SHA256 sha = SHA256.Create())
             using (FileStream file = File.OpenRead(location))
                 hash = BitConverter.ToString(sha.ComputeHash(file)).Replace("-", "").Substring(0, 12);
-            PayloadDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CodexPhoneNotifier", "0.4.1-" + hash);
+            PayloadDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CodexPhoneNotifier", "0.4.2-" + hash);
             Directory.CreateDirectory(PayloadDirectory);
             string[] files = { "install.ps1", "uninstall.ps1", "review-hooks.ps1", "scripts/common.ps1", "scripts/notify.ps1", "desktop/desktop-backend.ps1", "desktop/assets/LUCIDE-LICENSE.txt", "desktop/assets/ICON-NOTICE.txt", "desktop/assets/LOBE-ICONS-LICENSE.txt", "LICENSE" };
             foreach (string relative in files)
@@ -99,6 +100,7 @@ namespace CodexPhoneNotifier
     internal sealed class MainForm : Form
     {
         private readonly DesktopBackend backend;
+        private Icon taskbarIcon;
         private readonly bool preview;
         private readonly string directory;
         private bool installed, hasToken, busy, loading, dirty;
@@ -119,6 +121,8 @@ namespace CodexPhoneNotifier
             ClientSize = new Size(960, Math.Min(790, Screen.PrimaryScreen.WorkingArea.Height - 80)); MinimumSize = new Size(890, 650);
             using (Stream iconResource = Assembly.GetExecutingAssembly().GetManifestResourceStream("brand.icon"))
             using (Icon brand = new Icon(iconResource)) Icon = (Icon)brand.Clone();
+            using (Stream taskbarResource = Assembly.GetExecutingAssembly().GetManifestResourceStream("brand.taskbar"))
+                taskbarIcon = new Icon(taskbarResource, SystemInformation.IconSize);
             BuildInterface();
             Shown += async delegate { if (!preview) await RunOperation("status", "", false); };
             FormClosing += delegate(object sender, FormClosingEventArgs args)
@@ -131,6 +135,26 @@ namespace CodexPhoneNotifier
                 ApplyStatus(new Dictionary<string, object> { { "installed", true }, { "hasToken", true }, { "ntfyEnabled", false }, { "wechatEnabled", true }, { "server", "https://ntfy.sh" }, { "topic", "codex-demo-topic-for-preview" } });
                 result.Text = "微信聊天通知已开启，ntfy 已暂停。主题和加密 Token 会保留，随时可以恢复。";
             }
+        }
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern IntPtr SendMessage(IntPtr window, uint message, IntPtr parameter, IntPtr value);
+        protected override void OnHandleCreated(EventArgs args)
+        {
+            base.OnHandleCreated(args);
+            // 大图标供任务栏和 Alt+Tab 使用；标题栏的小图标继续由 Form.Icon 提供。
+            if (taskbarIcon != null) SendMessage(Handle, 0x0080, new IntPtr(1), taskbarIcon.Handle);
+        }
+        protected override void WndProc(ref Message message)
+        {
+            // 单独返回浅色大图标，避免 WinForms 更新窗口时恢复深色任务栏图标。
+            if (message.Msg == 0x007F && message.WParam == new IntPtr(1) && taskbarIcon != null)
+            { message.Result = taskbarIcon.Handle; return; }
+            base.WndProc(ref message);
+        }
+        protected override void Dispose(bool disposing)
+        {
+            base.Dispose(disposing);
+            if (disposing && taskbarIcon != null) { taskbarIcon.Dispose(); taskbarIcon = null; }
         }
         private Label LabelText(string text, int height)
         { return new Label { Text = text, AutoSize = false, Height = height, Width = 390, Margin = new Padding(0, 0, 0, 6), ForeColor = ink }; }
@@ -170,7 +194,7 @@ namespace CodexPhoneNotifier
             Panel heading = new Panel { Dock = DockStyle.Fill };
             heading.Controls.Add(new Label { Text = "Codex 手机提醒", Font = new Font(Font.FontFamily, 20, FontStyle.Bold), AutoSize = true, Location = new Point(0, 0), ForeColor = ink });
             heading.Controls.Add(new Label { Text = "做完任务，或等你回答时，让手机提醒你。", AutoSize = true, Location = new Point(2, 41), ForeColor = Color.FromArgb(94, 109, 132) });
-            Label version = new Label { Text = "v0.4.1", AutoSize = true, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(834, 10), ForeColor = Color.FromArgb(94, 109, 132) };
+            Label version = new Label { Text = "v0.4.2", AutoSize = true, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(834, 10), ForeColor = Color.FromArgb(94, 109, 132) };
             heading.Controls.Add(version); root.Controls.Add(heading, 0, 0);
             summary = new Label { Text = "正在读取本机设置…", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, ForeColor = blue };
             root.Controls.Add(summary, 0, 1);
