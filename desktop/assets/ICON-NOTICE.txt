@@ -1,0 +1,18 @@
+Codex 手机提醒 — 图标来源
+
+图标采用透明背景：OpenAI / ChatGPT 结形标志为主体，右下角为金色铃铛。
+
+结形 SVG：Lobe Icons（LobeHub），MIT 许可。
+https://github.com/lobehub/lobe-icons
+https://github.com/lobehub/lobe-icons/blob/master/packages/static-svg/icons/openai.svg
+
+铃铛轮廓：Lucide bell-ring，ISC 许可；移除了两侧振铃线，并添加填色。
+https://lucide.dev/icons/bell-ring
+
+完整许可随软件内嵌，保存在此目录：
+LOBE-ICONS-LICENSE.txt
+LUCIDE-LICENSE.txt
+
+本项目是独立的第三方通知工具，与 OpenAI 没有官方隶属关系。
+OpenAI / ChatGPT 标志及商标属于 OpenAI；图标库和本项目的开源许可不授予商标权，也不表示获得官方认可。
+官方品牌说明：https://openai.com/brand/

@@ -12,8 +12,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("Codex 手机提醒")]
 [assembly: AssemblyDescription("ntfy 与微信 ClawBot 的 Windows 图形配置工具")]
-[assembly: AssemblyVersion("0.4.0.0")]
-[assembly: AssemblyFileVersion("0.4.0.0")]
+[assembly: AssemblyVersion("0.4.1.0")]
+[assembly: AssemblyFileVersion("0.4.1.0")]
 
 namespace CodexPhoneNotifier
 {
@@ -37,9 +37,9 @@ namespace CodexPhoneNotifier
             using (SHA256 sha = SHA256.Create())
             using (FileStream file = File.OpenRead(location))
                 hash = BitConverter.ToString(sha.ComputeHash(file)).Replace("-", "").Substring(0, 12);
-            PayloadDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CodexPhoneNotifier", "0.4.0-" + hash);
+            PayloadDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CodexPhoneNotifier", "0.4.1-" + hash);
             Directory.CreateDirectory(PayloadDirectory);
-            string[] files = { "install.ps1", "uninstall.ps1", "review-hooks.ps1", "scripts/common.ps1", "scripts/notify.ps1", "desktop/desktop-backend.ps1", "desktop/assets/LUCIDE-LICENSE.txt", "LICENSE" };
+            string[] files = { "install.ps1", "uninstall.ps1", "review-hooks.ps1", "scripts/common.ps1", "scripts/notify.ps1", "desktop/desktop-backend.ps1", "desktop/assets/LUCIDE-LICENSE.txt", "desktop/assets/ICON-NOTICE.txt", "desktop/assets/LOBE-ICONS-LICENSE.txt", "LICENSE" };
             foreach (string relative in files)
             {
                 string target = Path.Combine(PayloadDirectory, relative.Replace('/', Path.DirectorySeparatorChar));
@@ -170,7 +170,7 @@ namespace CodexPhoneNotifier
             Panel heading = new Panel { Dock = DockStyle.Fill };
             heading.Controls.Add(new Label { Text = "Codex 手机提醒", Font = new Font(Font.FontFamily, 20, FontStyle.Bold), AutoSize = true, Location = new Point(0, 0), ForeColor = ink });
             heading.Controls.Add(new Label { Text = "做完任务，或等你回答时，让手机提醒你。", AutoSize = true, Location = new Point(2, 41), ForeColor = Color.FromArgb(94, 109, 132) });
-            Label version = new Label { Text = "v0.4.0", AutoSize = true, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(834, 10), ForeColor = Color.FromArgb(94, 109, 132) };
+            Label version = new Label { Text = "v0.4.1", AutoSize = true, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(834, 10), ForeColor = Color.FromArgb(94, 109, 132) };
             heading.Controls.Add(version); root.Controls.Add(heading, 0, 0);
             summary = new Label { Text = "正在读取本机设置…", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, ForeColor = blue };
             root.Controls.Add(summary, 0, 1);
@@ -251,8 +251,8 @@ namespace CodexPhoneNotifier
                 string hint = keepConfig.Checked ? "卸载会移除本工具的自动通知钩子和发送脚本，保留主题及加密 Token。其他 Codex 配置保留。继续？" : "卸载会移除本工具的钩子、脚本、配置和加密 Token。其他 Codex 配置保留，原文件会先备份。继续？";
                 if (Confirm(hint)) await RunOperation("uninstall", "", false);
             }); uninstall.ForeColor = Color.FromArgb(169, 48, 57); Track(uninstall); flow.Controls.Add(uninstall);
-            Button iconSource = ButtonText("开源图标来源", 170, delegate { OpenUrl("https://lucide.dev/icons/bell-ring"); });
-            Button iconLicense = ButtonText("查看图标许可", 180, delegate { if (backend != null) Process.Start(new ProcessStartInfo("notepad.exe", "\"" + Path.Combine(backend.PayloadDirectory,"desktop","assets","LUCIDE-LICENSE.txt") + "\"") { UseShellExecute = true }); });
+            Button iconSource = ButtonText("开源图标来源", 170, delegate { OpenUrl("https://github.com/lobehub/lobe-icons"); });
+            Button iconLicense = ButtonText("查看图标许可", 180, delegate { if (backend != null) Process.Start(new ProcessStartInfo("notepad.exe", "\"" + Path.Combine(backend.PayloadDirectory,"desktop","assets","ICON-NOTICE.txt") + "\"") { UseShellExecute = true }); });
             flow.Controls.Add(ButtonRow(iconSource, iconLicense));
             Label help = LabelText("关闭两个渠道可以暂停全部提醒，配置仍保留。软件不用一直开着，保存后可以直接关闭窗口。卸载只处理电脑端，不会卸载手机上的 ntfy 或微信。", 60); help.Width = 810; flow.Controls.Add(help);
         }
