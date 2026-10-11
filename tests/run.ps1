@@ -72,6 +72,7 @@ try {
     Assert-Check ($global:NotifierTestRequests[1].payload.title -eq 'Codex 等待你回答') '输入标题为中文'
     Assert-Check ($global:NotifierTestRequests[2].payload.title -eq 'Codex 通知测试') '测试标题为中文'
     Assert-Check ($global:NotifierTestRequests[1].payload.message -match '等待你选择或回答') 'UTF-8 正文没有乱码'
+    Assert-Check ($global:NotifierTestRequests[1].payload.message -match '时间：\d{4}-\d{2}-\d{2} {4}\d{2}:\d{2}:\d{2}$') '通知时间没有时区，日期与时间之间为四个空格'
     Assert-Check ($global:NotifierTestRequests[0].payload.priority -eq 4) '文字优先级映射为 JSON 数字'
     Assert-Check ($null -eq $global:NotifierTestRequests[1].payload.PSObject.Properties['click']) '空 click 不会写进通知'
     Assert-Check ($global:NotifierTestRequests[0].contentType -eq 'application/json; charset=utf-8') '明确使用 UTF-8 JSON'

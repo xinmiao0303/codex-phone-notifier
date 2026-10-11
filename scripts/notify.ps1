@@ -60,7 +60,7 @@ try {
     } elseif (-not [int]::TryParse($priorityText, [ref]$priority) -or $priority -lt 1 -or $priority -gt 5) { throw 'Invalid priority' }
     $computer = $env:COMPUTERNAME
     if ([string]::IsNullOrWhiteSpace($computer)) { $computer = '这台电脑' }
-    $message = @($summary, ('电脑：' + $computer), ('时间：' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss zzz'))) -join [Environment]::NewLine
+    $message = @($summary, ('电脑：' + $computer), ('时间：' + (Get-Date -Format 'yyyy-MM-dd    HH:mm:ss'))) -join [Environment]::NewLine
     $payload = [ordered]@{
         topic = $topic
         title = $title
