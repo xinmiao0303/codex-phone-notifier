@@ -1,89 +1,82 @@
 # Codex 手机提醒
 
-**Codex 做完任务，或者正在等你选择、回答时，让手机提醒你。**
+**Codex 做完这一轮任务，或者正在等你选择、回答时，让手机提醒你。**
 
-这个小工具适合在 Windows 电脑上使用 Codex 的人。默认通过 ntfy 提醒，也可以选用微信（PushPlus）或同时使用两条通道。你可以离开电脑去做其他事情，不必一直盯着聊天窗口。
+适合在 Windows 电脑上使用 Codex 的人。你可以离开电脑去做其他事情，收到提醒后再回来继续。这个工具负责通知，不会替你回答问题或批准操作。
 
-收到提醒后，回到电脑继续使用 Codex。这个工具负责通知，不会替你回答问题或批准操作。
+## 先选一种通知方式
+
+本项目支持 **ntfy 通知**和**微信通知**，两种方式分别设置，也可以同时使用。
+
+| | ntfy 通知 | 微信通知（PushPlus） |
+| --- | --- | --- |
+| 消息发到哪里 | 手机的 ntfy App | 手机微信中的 PushPlus 消息 |
+| 手机需要准备什么 | 安装 ntfy，订阅主题 | 用微信登录 PushPlus、关注公众号、完成实名认证；不用安装 ntfy |
+| 电脑需要填写什么 | ntfy 服务器和订阅主题；安装器会生成随机主题 | PushPlus 的用户 Token 或消息 Token，在本机密码框填写 |
+| iPhone 配小米手环 9 | 本次设备需要开启“其他”才能转发 ntfy | 可以通过“微信”开关转发，已实际收到“服务通知” |
+| 详细教程 | [ntfy 通知：订阅、测试和设置](docs/ntfy.md) | [微信通知：连接、测试和手环设置](docs/wechat.md) |
+
+**ntfy 的“订阅主题”和 PushPlus 的“Token”是两回事，不能互相填写。** 小米手环上只想关闭“其他”、保留“微信”的用户，请看微信教程。
+
+安装器第一次安装时默认只启用 ntfy。连接微信时默认保留 ntfy；也可以选择只用微信。具体选择方法见下方“自动提醒走哪条通道”。
 
 ## 会收到什么？
 
-| 什么时候 | 手机通知标题 | 你可以做什么 |
+下面的标题和内容，两种通知方式都适用。
+
+| 什么时候 | 默认通知标题 | 你可以做什么 |
 | --- | --- | --- |
-| Codex 完成这一轮任务 | Codex 任务已完成 | 回来查看结果 |
+| Codex 完成这一轮回复 | Codex 任务已完成 | 回来查看结果 |
 | Codex 弹出选择题或问题框 | Codex 等待你回答 | 回来选择或输入答案 |
-| 你主动发送测试 | Codex 通知测试 | 检查手机订阅是否正确 |
+| 你主动发送测试 | Codex 通知测试 | 检查接收是否正常 |
 
-标题和正文默认使用中文。正文只包含提醒、电脑名称和时间，不包含聊天内容、代码或问题正文。通知时间不显示时区偏移，日期和时刻之间用四个空格，例如：`2026-10-11    08:30:00`。
+标题和正文默认使用中文。正文只有提醒、电脑名称和时间，不包含聊天内容、代码或问题正文。时间示例：`2026-10-11    08:30:00`，日期和时刻之间四个空格，不显示 `+08:00`。
 
-默认不附带网页跳转链接；点击通知时由 ntfy 手机应用处理。启动 Codex 不会发送手机提醒。
+**普通文字提问、权限审批、后台命令单独完成，不属于这个版本的输入提醒范围。** 完成提醒表示一轮 Codex 回复结束，不保证整个项目已经做完。启动 Codex 不发手机提醒。
 
-**普通文字提问、权限审批、后台命令单独完成，不属于这个版本的输入提醒范围。** “任务完成”指一轮 Codex 回复结束，不是保证整个项目已经做完。
-
-## 它是怎么工作的？
+## 两种方式分别怎么工作？
 
 ~~~text
-Codex 发生事件 → 电脑上的通知脚本 → ntfy 服务 → 你订阅这个主题的手机
+ntfy 通知：Codex → 本机脚本 → ntfy 服务 → 订阅对应主题的 ntfy App
+微信通知：Codex → 本机脚本 → PushPlus → 手机微信 → 可由微信转发到手环
 ~~~
 
-- **Codex 钩子（hook）**：Codex 在特定时刻自动运行一条命令。本工具用它识别任务结束和弹出问题。
-- **ntfy**：把电脑发送的消息推送给手机的服务。
-- **订阅主题（topic）**：可以理解成你的消息收件箱。电脑发送和手机订阅必须使用同一个名字。
+微信方式通过 PushPlus 发送，不使用 ntfy 的订阅主题。两条通道使用同一套 Codex 钩子，不需要装两套钩子。钩子（hook）就是 Codex 在任务结束或弹出问题时，自动运行电脑上的通知脚本。
 
-安装时会自动生成随机主题，不需要自己想名字。公共 ntfy 服务上的随机主题不是带密码的私人频道，请不要把真实主题、访问令牌或本地配置上传到仓库。
+## 电脑基础安装：两种方式都先做这一步
 
-## 使用前需要什么？
+需要 Windows、支持 hooks 的 Codex，以及 Windows 自带的 PowerShell 5.1 或 PowerShell 7。不需要 Python、Node.js 或管理员权限。电脑和手机需要能够访问所选通知服务。
 
-- Windows，以及支持 hooks 的 Codex。
-- Windows 自带的 PowerShell 5.1；也支持 PowerShell 7。不需要 Python、Node.js 或管理员权限。
-- 手机安装 [ntfy](https://ntfy.sh/app)，允许它显示通知。
-- 电脑和手机能够访问你选择的 ntfy 服务器。默认使用 https://ntfy.sh 。
-
-这里的安装脚本面向 Windows。iPhone 已实际验证；Android 可以使用 ntfy 客户端订阅，但本项目没有做 Android 实机验证。Apple Watch 的显示和震动取决于 iPhone 的通知镜像设置，项目没有单独验证手表。
-
-## 从零开始安装
-
-### 1. 下载并解压
+### 1. 下载并安装电脑端
 
 打开 [本仓库](https://github.com/xinmiao0303/codex-phone-notifier)，点击绿色 **Code → Download ZIP**，解压。
 
-如果已经安装 Git，也可以运行：
+打开 PowerShell，进入项目目录。下面的路径只是例子，请换成你的解压位置：
+
+~~~powershell
+cd 'C:\Tools\codex-phone-notifier-main'
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
+~~~
+
+也可以用 Git 下载，再运行同一条安装命令：
 
 ~~~powershell
 git clone https://github.com/xinmiao0303/codex-phone-notifier.git
 cd .\codex-phone-notifier
-~~~
-
-### 2. 在电脑上安装
-
-打开 PowerShell，进入刚才解压的项目目录。例如：
-
-~~~powershell
-cd 'C:\Tools\codex-phone-notifier-main'
-~~~
-
-这个路径只是例子，请换成你自己的解压位置。然后执行：
-
-~~~powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
 ~~~
 
-安装器会输出 **服务器地址**和**订阅主题**。保留这个窗口，下一步需要照着填写。
+安装器显示的“服务器”和“订阅主题”用于 **ntfy**。如果只用微信，不用在手机上订阅这个主题，下一步直接连接微信即可。
 
-这里的 Bypass 只作用于这一次启动的 PowerShell 进程，不会永久更改系统的执行策略。
+`-ExecutionPolicy Bypass` 只作用于这一次启动的 PowerShell 进程，不会永久更改系统执行策略。
 
-### 3. 在手机上订阅
+### 2. 完成你选的通知方式
 
-打开 ntfy，添加一个订阅：
+- **用 ntfy**：按 [ntfy 教程](docs/ntfy.md)安装手机 App、订阅主题，并单独测试 ntfy。
+- **用微信**：按 [微信教程](docs/wechat.md)连接 PushPlus、填写本机密钥，并单独测试微信。教程包含“只用微信”的命令，不要求安装 ntfy App。
+- **两种都用**：先订阅 ntfy，再连接微信；分别测试两条通道。
 
-- **服务器**：填写安装器显示的服务器，默认是 https://ntfy.sh 。
-- **主题**：复制安装器显示的主题，必须完全一致。
-
-允许 ntfy 发通知。先保持手机订阅不变；不要只在手机上改主题，否则电脑还会向旧主题发送。
-
-### 4. 信任本工具的钩子
-
-安装文件并不代表 Codex 会立即执行它。Codex 要求先审查并信任新钩子。
+### 3. 审查并信任 Codex 钩子
 
 在项目目录运行：
 
@@ -91,249 +84,140 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\review-hooks.ps1
 ~~~
 
-这会打开 Codex 的终端界面，不会主动发送模型任务。
+这会打开 Codex 的终端界面，不会主动发送模型任务。启动时若提示审查钩子，进入审查界面；也可以输入 **/hooks**。
 
-如果启动时显示钩子需要审查，进入审查界面；也可以输入 **/hooks**。找到命令指向 **codex-ntfy-notify.ps1** 的本工具钩子，检查后再信任：
+找到命令指向 **codex-ntfy-notify.ps1** 的本工具钩子，检查后信任：
 
 - **Stop**：发送完成提醒。
-- **PreToolUse**：仅在调用选择题/提问工具时发送输入提醒。
-- **SessionStart**：启动登记，只写本地日志。
+- **PreToolUse**：调用选择题或提问工具时发送输入提醒。
+- **SessionStart**：只登记本地日志。
 
-不要直接信任你不认识的其他工具的钩子。完成后退出终端里的 Codex，可以按 Ctrl+C；必要时再按一次。
+不要信任不认识的其他工具的钩子。完成后用 Ctrl+C 退出终端里的 Codex，必要时再按一次。
 
-### 5. 完整重启 Codex
+### 4. 完整重启，再测试自动提醒
 
-**关闭所有 Codex 桌面窗口，再重新打开。**
+**关闭所有 Codex 桌面窗口，再重新打开。** 首次安装或修改钩子后，不要跳过这一步。
 
-这一步不要跳过。安装或改变钩子后，已经运行的会话可能仍使用旧配置。仅关闭审查终端不能代替重启桌面应用。
+1. 让 Codex 完成一个简短任务，回复结束后检查 **Codex 任务已完成**。
+2. 让 Codex **弹出一道选择题，并先停留在提问阶段**，问题出现时检查 **Codex 等待你回答**。
 
-### 6. 测试
+手动发送测试成功，只说明通知通道可用；还需要用真实任务和问题框验证自动触发。已经审查过并重启的用户，仅切换通知通道或修改标题时，无需重新装钩子或重启。
 
-先测试手机发送通道：
+## 自动提醒走哪条通道？
 
-~~~powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\send-test.ps1
-~~~
-
-手机应收到 **Codex 通知测试**。
-
-再测试真正的自动提醒：
-
-1. 让 Codex 完成一个简短任务，回复结束后应收到 **Codex 任务已完成**。
-2. 让 Codex **弹出一道选择题，并先停留在提问阶段**。问题出现时应收到 **Codex 等待你回答**。
-3. 区分这两个时间点：问题弹出时的提醒，和回答结束后的提醒。
-
-手动测试成功只说明发送通道可用，不能代替对钩子自动触发的验证。
-
-## 用微信接收提醒（可选）
-
-如果你的 iPhone 配小米手环，只能通过“其他”开关接收 ntfy，还会带上许多其他 App 的通知，可以试用微信通道：
-
-~~~text
-Codex → 本机脚本 → PushPlus 微信公众号 → 手机微信 → 手环
-~~~
-
-微信聊天等通知也会转发到手环；这个方案只解决不必开启“其他”，不能按消息内容只转发 Codex。
-
-### 连接微信
-
-1. 先完成上面的电脑安装。打开 [PushPlus 官网](https://www.pushplus.plus/)，用微信登录，按网站提示关注公众号并完成实名认证。
-2. 在网站“发送消息”等页面找到**用户 token 或消息 token**。不要把它发到聊天里，也不要填写开放接口的 AccessKey。
-3. 测试前退出手机微信的公众号聊天界面，把微信放到后台并锁屏。保持手机和手环的蓝牙连接。
-4. 在项目目录双击 **connect-wechat.cmd**，把 token 粘贴到弹出的密码框，点击“保存并测试”。也可以运行：
-
-~~~powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\enable-wechat.ps1 -Gui
-~~~
-
-密钥通过 Windows DPAPI 加密后存放在 Codex 目录的 **pushplus-token.dpapi**。它只适用于这台电脑的当前 Windows 用户；换电脑或换用户要重新填写。JSON 配置、控制台和日志都不输出明文密钥。
-
-默认保留 ntfy，同时增加微信，既有主题和自定义标题也保留。钩子命令不变，下次事件即可读取新设置；已经完成基础钩子审查和重启的用户无需为添加微信再次重启。
-
-### 确认手机与手环都收到
-
-“微信推送请求已提交”只表示 PushPlus 接受了请求，**不是手机已经收到**。在微信里检查新通知，再检查手环是否震动和显示内容。必要时检查微信通知权限、公众号的消息免打扰设置；也可在 PushPlus 网站查看该条消息的投递状态。
-
-微信和手环均验证成功后，再到小米运动健康的应用通知页面，关闭“其他”、开启“微信”。原来需要的电话或信息提醒可以照常保留。
-
-单独测试微信，不向 ntfy 再发一次：
-
-~~~powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\send-test.ps1 -Channel wechat
-~~~
-
-想让自动提醒只走微信，可以在 ntfy-codex.json 中把 channels 改为：
-
-~~~json
-"channels": ["wechat"]
-~~~
-
-同时使用两条通道则是 `["ntfy", "wechat"]`。这是配置中的一个字段，修改时保留原 JSON 的其他内容与逗号。
-
-### 关闭微信、回到 ntfy
-
-~~~powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\enable-wechat.ps1 -Disable
-~~~
-
-它保留本机加密密钥，自动提醒回到 ntfy。如果之前关闭了手环的“其他”，需要重新开启才能在手环上看到 ntfy。
-
-### 微信通道限制
-
-[PushPlus 官方额度说明](https://www.pushplus.plus/doc/guide/use.html)要求发送者实名认证；普通实名账户的微信通道每天最多 200 次请求，每分钟最多 5 次。这个工具每分钟最多尝试 5 次；超过时跳过微信并记录日志，ntfy 仍继续。不会自动重试，所以被跳过的微信提醒不会稍后补发。
-
-遇到账号受限的 900 返回码后，当天暂停微信请求，次日再尝试。日志里的 905 表示未实名、903 表示密钥无效。修复后可重新运行连接脚本更新密钥和发送状态。每条通知都只发给密钥所属的用户，不填写群组或好友参数。
-
-项目已验证微信请求编码、密钥保护和两条通道的独立失败处理；实际投递及手环显示要按上述步骤在自己的设备上确认。[PushPlus 消息接口说明](https://www.pushplus.plus/doc/guide/api.html)
-
-## 常用设置
-
-配置默认在你的用户目录下：
-
-~~~text
-%USERPROFILE%\.codex\ntfy-codex.json
-~~~
-
-如果设置了 CODEX_HOME，则使用那个目录。可以在 PowerShell 中打开默认配置：
+配置默认在 `%USERPROFILE%\.codex\ntfy-codex.json`；设置过 `CODEX_HOME` 时使用对应目录。打开默认配置：
 
 ~~~powershell
 notepad "$HOME\.codex\ntfy-codex.json"
 ~~~
 
-[config.example.json](config.example.json) 只是示例，不是任何人的真实订阅。
+这个文件供两种通道共用，文件名沿用 ntfy；**只用微信时也会使用它**。不要因为文件名里有 ntfy，就把它删掉。
 
-| 配置项 | 用途 |
+只修改现有 JSON 中的 `channels` 字段，保留其他内容和逗号：
+
+| 你想怎么接收 | channels 的值 | 前提 |
+| --- | --- | --- |
+| 只用 ntfy | `["ntfy"]` | 手机已经订阅对应主题 |
+| 只用微信 | `["wechat"]` | 已完成 PushPlus 连接并保存本机密钥 |
+| ntfy 和微信都用 | `["ntfy", "wechat"]` | 两种方式都设置完成 |
+
+旧配置没有 `channels` 时默认 ntfy。双通道会分别尝试发送；一条失败仍会尝试另一条。
+
+### 单独测试，不要混淆结果
+
+~~~powershell
+# 只测 ntfy：去手机 ntfy App 检查
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\send-test.ps1 -Channel ntfy
+
+# 只测微信：去手机微信和手环检查
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\send-test.ps1 -Channel wechat
+~~~
+
+`-Channel` 只决定这一次测试发到哪里，不改变自动提醒的通道。省略它时，按配置中启用的通道发送测试。
+
+## 设置、更新和卸载
+
+| 设置 | 适用范围 |
 | --- | --- |
-| channels | 自动提醒通道；旧配置未填写时默认 ntfy |
-| server | ntfy 服务器 |
-| topic | 手机与电脑共同使用的主题 |
-| title | 完成提醒标题 |
-| inputTitle | 等待回答提醒标题 |
-| testTitle | 测试提醒标题 |
-| priority | 提醒优先级，默认 default |
-| tags / inputTags | ntfy 的图标标签 |
-| click | 点击时打开的链接；留空则不设置网页链接 |
-| authorization | 可选，用于需要认证的自建/受保护服务器，例如 Bearer 后接访问令牌 |
+| title / inputTitle / testTitle | 两种通道的中文标题 |
+| server / topic / authorization | 仅 ntfy：服务器、主题和服务器认证 |
+| priority / tags / inputTags / click | 仅 ntfy：优先级、图标和点击链接 |
+| pushplus-token.dpapi | 仅微信：在本机加密的 PushPlus 密钥，不写进 JSON |
 
-修改通知标题后，下次发送就会读取新配置，不需要重新信任钩子。把 click 设为空字符串，只影响之后的新通知；以前的通知仍保留原链接。
+[config.example.json](config.example.json) 只是可公开的示例，不是任何人的真实配置。具体设置与限制分别见 [ntfy 教程](docs/ntfy.md)和[微信教程](docs/wechat.md)。
 
-### 只要完成提醒
-
-重新运行安装器，关闭输入提醒：
+只要完成提醒、不需要等待回答提醒：
 
 ~~~powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -NoInputReminder
 ~~~
 
-然后完整重启 Codex。其他工具的提问前钩子不会被移除。
+修改钩子后完整重启 Codex。它不会移除其他工具的提问前钩子。
 
-### 使用自己的服务器或主题
+更新时下载新版本，在新目录再次运行 `install.ps1`。默认保留已有主题、标题、通道和加密微信密钥。若新增或改变了钩子，审查后完整重启。
 
-第一次安装时可以指定：
-
-~~~powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Server 'https://ntfy.example.com' -Topic 'my-random-topic'
-~~~
-
-如果已经有配置，重复安装会保留它。明确需要替换配置时才加 **-ForceConfig**；它会重新写入所有默认通知设置：
-
-~~~powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Topic 'another-random-topic' -ForceConfig
-~~~
-
-换主题后，手机也要订阅新主题，测试通过后再移除旧订阅。本工具接受 1 至 64 个英文字母、数字、短横线或下划线作为主题名。
-
-### 更新
-
-下载新版本，在新版本目录中再次运行 install.ps1。默认保留已有主题、标题和其他通知设置，不会生成第二套重复钩子。
-
-如果旧配置的标题仍是英文，直接在配置文件中改成中文即可。审查新增或改变的钩子后，完整重启 Codex。
-
-## 没收到通知时怎么办？
-
-### 测试通知都收不到
-
-- 检查电脑是否提示发送失败。
-- 手机与电脑的服务器、主题是否完全一致。
-- ntfy 是否被允许显示通知；iPhone 的专注模式是否屏蔽了提醒。
-- 电脑和手机是否都能访问服务器；自建服务器的认证是否正确。
-
-### 测试能收到，自动提醒收不到
-
-- 是否信任了钩子。
-- 是否在安装之后完整退出并重开 Codex。
-- Codex 的 hooks 功能是否被配置或管理策略关闭。
-- 等待输入测试是否真的弹出了问题框，而不是一段普通文字。
-- 当前工作模式是否支持本地命令钩子。官方文档说明部分云端编排场景不支持这类钩子，即使工具在本机执行。
-
-可以查看本地日志：
-
-~~~powershell
-Get-Content "$HOME\.codex\ntfy-codex.log" -Tail 20
-~~~
-
-- **sent/test**：手动测试已发送。
-- **sent/done**：完成提醒已发送。
-- **input-hook-start**：输入提醒钩子已被调用。
-- **sent/input**：输入提醒已发送。
-- **queued/事件/wechat**：微信推送请求被接受，仍需确认手机投递。
-- **error/事件/通道**：发送失败、微信请求限速或暂停。
-
-本地日志仅记录事件、时间、错误类型或消息编号，不记录令牌、主题和聊天正文。提交 Issue 前，也请不要粘贴真实配置、主题或访问令牌。
-
-## 如何卸载？
-
-在项目目录执行：
+完整卸载两种通道：
 
 ~~~powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\uninstall.ps1
 ~~~
 
-它会移除本工具的三个钩子、通知脚本及订阅配置，保留其他工具的钩子、config.toml、聊天记录和备份。然后完整重启 Codex。
+卸载会备份并移除本工具钩子、脚本、配置、加密微信密钥与微信发送状态，保留其他工具的钩子、config.toml、聊天记录和备份。卸载后完整重启 Codex。
 
-想保留主题配置和加密微信密钥，方便以后重装：
+想保留配置和加密密钥，方便以后重装，在命令末尾加 `-KeepConfig`。原文件备份位于 Codex 目录的 **backups/codex-phone-notifier/**。
+
+**只想关闭微信、保留 ntfy**，不要卸载整个工具；按[微信教程的关闭步骤](docs/wechat.md#关闭微信回到-ntfy)操作。
+
+## 收不到提醒时先看哪一部分？
+
+- ntfy App 收不到：看 [ntfy 排查](docs/ntfy.md#ntfy-收不到时检查什么)。
+- 微信或手环收不到：看 [微信与手环排查](docs/wechat.md#微信或手环收不到时检查什么)。
+- 手动测试能收到、自动提醒收不到：检查钩子是否已信任、是否完整重启、是否真的弹出了问题框。普通文字提问不触发输入提醒。
+- 检查当前工作模式是否支持本地命令钩子；部分云端编排场景不支持，即使工具在本机执行。参考 [Codex hooks 文档](https://learn.chatgpt.com/docs/hooks)。
+
+查看日志：
 
 ~~~powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\uninstall.ps1 -KeepConfig
+Get-Content "$HOME\.codex\ntfy-codex.log" -Tail 20
 ~~~
 
-安装、更新和卸载前的原文件备份保存在 Codex 目录的 **backups/codex-phone-notifier/** 中。
+| 日志 | 属于哪种通知 | 表示什么 |
+| --- | --- | --- |
+| sent/test、sent/done、sent/input | ntfy | 消息已发布到 ntfy 服务，仍要检查手机是否收到 |
+| queued/事件/wechat | 微信 | PushPlus 接受了请求，还不代表手机或手环收到 |
+| input-hook-start | 共用钩子 | 问题框触发了输入提醒 |
+| error/事件/通道 | 对应通道 | 发送失败、限速或暂停 |
 
-## 项目文件
+日志不记录令牌、主题和聊天正文。提交 Issue 时请说明是 **ntfy 收不到**、**微信收不到**还是**手环收不到**，不要粘贴真实配置或密钥。
+
+## 项目文件和验证
 
 | 文件 | 用途 |
 | --- | --- |
-| install.ps1 | 安装或更新，合并钩子并备份原文件 |
-| review-hooks.ps1 | 打开 Codex 自带的钩子审查界面 |
-| send-test.ps1 | 发送中文测试通知，失败会报错 |
-| uninstall.ps1 | 卸载，保留其他配置 |
-| connect-wechat.cmd / enable-wechat.ps1 | 打开微信密钥填写窗口、连接或关闭微信 |
-| scripts/notify.ps1 | 真正发送通知，安装后可以独立运行 |
-| scripts/common.ps1 | 安装/卸载共用的文件处理 |
+| docs/ntfy.md | ntfy 的手机订阅、测试、设置和排查 |
+| docs/wechat.md | 微信的密钥连接、手环设置、限制和排查 |
+| install.ps1 / review-hooks.ps1 | 共用的电脑安装和钩子审查 |
+| send-test.ps1 | 用 -Channel 单独测试 ntfy 或微信 |
+| connect-wechat.cmd / enable-wechat.ps1 | 仅微信：本机密钥填写、连接或关闭微信 |
+| uninstall.ps1 | 共用卸载，保留其他工具的配置 |
+| scripts/notify.ps1 | 根据 channels 发送对应通知 |
+| scripts/common.ps1 | 安装、配置和卸载的共用文件处理 |
 | config.example.json | 可公开的配置示例 |
-| tests/run.ps1 | 在隔离目录中验证安装、更新、发送和卸载 |
-
-中文 .ps1 文件使用 UTF-8 **带 BOM**，兼容 Windows PowerShell 5；写给 Codex 的 JSON 使用 UTF-8 **不带 BOM**，避免解析失败。
-
-## 开发与验证
-
-无需安装第三方测试框架：
+| tests/run.ps1 | 隔离检查，不向真实手机发消息 |
 
 ~~~powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\run.ps1
 pwsh.exe -NoProfile -File .\tests\run.ps1
 ~~~
 
-测试使用临时目录和模拟 HTTP，不会读取真实订阅、不向手机发消息，也不会修改真正的 .codex。
+测试无需第三方框架，使用临时目录、测试密钥和模拟 HTTP，不读取真实订阅、不修改真正的 .codex。Windows PowerShell 5.1 与 PowerShell 7.6 均通过 52 项检查，GitHub Actions 也在两种 PowerShell 下执行。
 
-测试覆盖微信 DPAPI 密钥、只发给自己、双通道独立失败、微信限速和暂停、中文 UTF-8、重复安装、与其他钩子共存、已有配置保留、发送失败、禁用输入提醒、卸载及错误 JSON。GitHub Actions 同时在 Windows PowerShell 和 PowerShell 7 上执行。
-
-发布前在 Windows PowerShell 5.1 与 PowerShell 7.6 下通过检查；Codex 0.162.0-alpha.17.2 上实际验证了任务完成与选择题提醒。Codex 后续版本的钩子行为可能变化，有问题欢迎提交 Issue。
+2026-10-11 实机验证：ntfy 在 iPhone 上收到完成与输入提醒；微信通过 PushPlus 收到测试，iPhone 配小米手环 9 也收到“服务通知”。Codex 测试版本为 0.162.0-alpha.17.2。Android 和 Apple Watch 未做本项目的实机验证。
 
 ## 许可证与致谢
 
 本项目使用 [MIT 许可证](LICENSE)，可以使用、修改和分享。
 
-使用场景受到 [isclin123/codex-watch-notifier](https://github.com/isclin123/codex-watch-notifier) 启发。本仓库是重新编写的 Windows 中文通知实现，未复制原仓库脚本；来源说明见 [NOTICE.md](NOTICE.md)。
+使用场景受到 [isclin123/codex-watch-notifier](https://github.com/isclin123/codex-watch-notifier) 启发。本仓库是重新编写的 Windows 中文通知实现，未复制原仓库脚本；见 [NOTICE.md](NOTICE.md)。
 
-参考：[Codex 官方 hooks 文档](https://learn.chatgpt.com/docs/hooks)、[ntfy 官方消息发布文档](https://docs.ntfy.sh/publish/)。
+两种服务的官方资料：[ntfy 发布说明](https://docs.ntfy.sh/publish/)、[PushPlus 消息接口](https://www.pushplus.plus/doc/guide/api.html)。
