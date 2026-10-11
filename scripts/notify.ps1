@@ -139,7 +139,7 @@ foreach ($deliveryChannel in $channels) {
             Write-DeliveryLog ('sent/{0}: id={1}' -f $Event, $result.id)
             if ($Strict) { Write-Host ('ntfy 通知已发送：' + $title) }
         } else {
-            $hint = '请检查 PushPlus 登录、公众号关注、实名状态及密钥。'
+            $hint = '请检查 PushPlus 实名、密钥和微信 ClawBot 绑定激活状态；每十条消息及每二十四小时需要主动对话一次。'
             $token = Read-WechatToken
             if ([string]::IsNullOrWhiteSpace($token)) { throw 'Empty Wechat token' }
             $skipReason = Reserve-WechatRequest
@@ -149,7 +149,7 @@ foreach ($deliveryChannel in $channels) {
                 throw 'Wechat request paused'
             }
             # 不填写 topic 或 to；只发送给密钥所属的用户，不向群组或好友发消息。
-            $payload = [ordered]@{ token=$token; title=$title; content=$message; template='txt'; channel='wechat' }
+            $payload = [ordered]@{ token=$token; title=$title; content=$message; template='txt'; channel='clawbot' }
             $request = @{ Method='Post'; Uri='https://www.pushplus.plus/send'; Headers=@{}; Body=[Text.Encoding]::UTF8.GetBytes(($payload | ConvertTo-Json -Compress)); ContentType='application/json; charset=utf-8'; TimeoutSec=$timeoutSeconds }
             $result = Invoke-RestMethod @request
             $token = $null
@@ -166,8 +166,8 @@ foreach ($deliveryChannel in $channels) {
             $receipt = [string]$result.data
             if ($receipt -notmatch '^[A-Za-z0-9_-]{1,128}$') { throw 'Missing PushPlus receipt' }
             # 200 只代表收到了请求；不能记作手机已收到。
-            Write-DeliveryLog ('queued/{0}/wechat: id={1}' -f $Event, $receipt)
-            if ($Strict) { Write-Host ('微信推送请求已提交：' + $title + '。请以手机和手环实际收到为准。') }
+            Write-DeliveryLog ('queued/{0}/wechat: channel=clawbot id={1}' -f $Event, $receipt)
+            if ($Strict) { Write-Host ('微信 ClawBot 聊天推送请求已提交：' + $title + '。请以手机和手环实际收到为准。') }
         }
     } catch {
         $token = $null

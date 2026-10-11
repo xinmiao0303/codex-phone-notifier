@@ -123,7 +123,7 @@ try {
     & $notifySource -Event input -ConfigPath $config -Channel wechat -Strict *> $null
     Assert-Check ($global:NotifierTestRequests.Count -eq 1 -and $global:NotifierTestRequests[0].uri -eq 'https://www.pushplus.plus/send') '微信测试仅请求 HTTPS 微信接口'
     $wechatPayload = $global:NotifierTestRequests[0].payload
-    Assert-Check ($wechatPayload.token -eq $fakeToken -and $wechatPayload.channel -eq 'wechat' -and $wechatPayload.template -eq 'txt') '本机解密并选择微信纯文本渠道'
+    Assert-Check ($wechatPayload.token -eq $fakeToken -and $wechatPayload.channel -eq 'clawbot' -and $wechatPayload.template -eq 'txt') '本机解密并选择 ClawBot 聊天纯文本渠道'
     Assert-Check ($wechatPayload.title -eq 'Codex 等待你回答' -and $wechatPayload.content -match '时间：\d{4}-\d{2}-\d{2} {4}\d{2}:\d{2}:\d{2}$') '微信保留中文及时间格式'
     Assert-Check ($null -eq $wechatPayload.PSObject.Properties['topic'] -and $null -eq $wechatPayload.PSObject.Properties['to']) '只发送给自己，不发送群组或好友'
     $log = [IO.File]::ReadAllText((Join-Path $homeUnderTest 'ntfy-codex.log'))

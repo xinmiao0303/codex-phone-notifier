@@ -10,10 +10,10 @@
 
 | | ntfy 通知 | 微信通知（PushPlus） |
 | --- | --- | --- |
-| 消息发到哪里 | 手机的 ntfy App | 手机微信中的 PushPlus 消息 |
-| 手机需要准备什么 | 安装 ntfy，订阅主题 | 用微信登录 PushPlus、关注公众号、完成实名认证；不用安装 ntfy |
+| 消息发到哪里 | 手机的 ntfy App | 手机微信里的 ClawBot 机器人聊天 |
+| 手机需要准备什么 | 安装 ntfy，订阅主题 | 用微信登录 PushPlus、实名认证、绑定并激活 ClawBot；不用安装 ntfy |
 | 电脑需要填写什么 | ntfy 服务器和订阅主题；安装器会生成随机主题 | PushPlus 的用户 Token 或消息 Token，在本机密码框填写 |
-| iPhone 配小米手环 9 | 本次设备需要开启“其他”才能转发 ntfy | 可以通过“微信”开关转发，已实际收到“服务通知” |
+| iPhone 配小米手环 9 | 本次设备需要开启“其他”才能转发 ntfy | 可以通过“微信”开关转发，已实际收到聊天消息 |
 | 详细教程 | [ntfy 通知：订阅、测试和设置](docs/ntfy.md) | [微信通知：连接、测试和手环设置](docs/wechat.md) |
 
 **ntfy 的“订阅主题”和 PushPlus 的“Token”是两回事，不能互相填写。** 小米手环上只想关闭“其他”、保留“微信”的用户，请看微信教程。
@@ -38,10 +38,10 @@
 
 ~~~text
 ntfy 通知：Codex → 本机脚本 → ntfy 服务 → 订阅对应主题的 ntfy App
-微信通知：Codex → 本机脚本 → PushPlus → 手机微信 → 可由微信转发到手环
+微信通知：Codex → 本机脚本 → PushPlus → 微信 ClawBot 聊天 → 手环
 ~~~
 
-微信方式通过 PushPlus 发送，不使用 ntfy 的订阅主题。两条通道使用同一套 Codex 钩子，不需要装两套钩子。钩子（hook）就是 Codex 在任务结束或弹出问题时，自动运行电脑上的通知脚本。
+微信方式通过 PushPlus 的 ClawBot 发到机器人聊天，不使用 ntfy 的订阅主题。需要先扫码绑定并激活；每收到十条推送，以及至少每二十四小时，要主动给机器人发一句话，详见[微信教程](docs/wechat.md)。两条通道使用同一套 Codex 钩子，不需要装两套钩子。钩子（hook）就是 Codex 在任务结束或弹出问题时，自动运行电脑上的通知脚本。
 
 ## 电脑基础安装：两种方式都先做这一步
 
@@ -154,7 +154,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -NoInputRe
 
 修改钩子后完整重启 Codex。它不会移除其他工具的提问前钩子。
 
-更新时下载新版本，在新目录再次运行 `install.ps1`。默认保留已有主题、标题、通道和加密微信密钥。若新增或改变了钩子，审查后完整重启。
+更新时下载新版本，在新目录再次运行 `install.ps1`。默认保留已有主题、标题、通道和加密微信密钥。已经连接过微信的用户，更新前也要先按微信教程完成 ClawBot 绑定和激活；原密钥可以继续使用。若新增或改变了钩子，审查后完整重启。
 
 完整卸载两种通道：
 
@@ -212,7 +212,7 @@ pwsh.exe -NoProfile -File .\tests\run.ps1
 
 测试无需第三方框架，使用临时目录、测试密钥和模拟 HTTP，不读取真实订阅、不修改真正的 .codex。Windows PowerShell 5.1 与 PowerShell 7.6 均通过 52 项检查，GitHub Actions 也在两种 PowerShell 下执行。
 
-2026-10-11 实机验证：ntfy 在 iPhone 上收到完成与输入提醒；微信通过 PushPlus 收到测试，iPhone 配小米手环 9 也收到“服务通知”。Codex 测试版本为 0.162.0-alpha.17.2。Android 和 Apple Watch 未做本项目的实机验证。
+2026-10-11 实机验证：ntfy 在 iPhone 上收到完成与输入提醒；微信通过 PushPlus ClawBot 发到机器人聊天，iPhone 和小米手环 9 都实际收到聊天消息。Codex 测试版本为 0.162.0-alpha.17.2。Android 和 Apple Watch 未做本项目的实机验证。
 
 ## 许可证与致谢
 

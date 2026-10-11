@@ -40,7 +40,7 @@ if ($null -eq $Token) {
         $form.MinimizeBox = $false
         $form.TopMost = $true
         $label = [Windows.Forms.Label]::new()
-        $label.Text = '粘贴 PushPlus 的用户 token 或消息 token（不是 AccessKey）。密钥只在本机加密保存。请先完成公众号关注和实名认证。'
+        $label.Text = '粘贴 PushPlus 的用户 token 或消息 token（不是 AccessKey）。密钥只在本机加密保存。请先完成实名认证，并绑定、激活微信 ClawBot。'
         $label.Location = [Drawing.Point]::new(18, 16)
         $label.Size = [Drawing.Size]::new(465, 48)
         $box = [Windows.Forms.TextBox]::new()
