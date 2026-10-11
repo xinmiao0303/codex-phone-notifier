@@ -20,6 +20,14 @@
 
 安装器第一次安装时默认只启用 ntfy。连接微信时默认保留 ntfy；也可以选择只用微信。具体选择方法见下方“自动提醒走哪条通道”。
 
+## 推荐使用图形界面
+
+[下载 Windows 软件 CodexPhoneNotifier.exe](https://github.com/xinmiao0303/codex-phone-notifier/releases/latest/download/CodexPhoneNotifier.exe) → 双击打开 → 选择渠道 → 点击 **安装 / 更新通知工具**。
+
+窗口里可以开启或关闭 ntfy 和微信、复制订阅主题、保存加密 Token、分别测试、移除一个渠道或卸载整个通知工具。两个渠道都关闭时暂停全部提醒，配置保留。保存后可以关闭窗口，不用一直开着。
+
+手机订阅、微信扫码实名和 Codex 钩子信任仍需自己完成，界面会提供指引。[图形界面完整教程与截图](docs/desktop.md)
+
 ## 会收到什么？
 
 下面的标题和内容，两种通知方式都适用。
@@ -48,6 +56,8 @@ ntfy 通知：Codex → 本机脚本 → ntfy 服务 → 订阅对应主题的 n
 需要 Windows、支持 hooks 的 Codex，以及 Windows 自带的 PowerShell 5.1 或 PowerShell 7。不需要 Python、Node.js 或管理员权限。电脑和手机需要能够访问所选通知服务。
 
 ### 1. 下载并安装电脑端
+
+推荐按[图形界面教程](docs/desktop.md)下载软件，在窗口里完成安装和渠道配置。下面的命令行方式仍可使用。
 
 打开 [本仓库](https://github.com/xinmiao0303/codex-phone-notifier)，点击绿色 **Code → Download ZIP**，解压。
 
@@ -120,6 +130,7 @@ notepad "$HOME\.codex\ntfy-codex.json"
 | 只用 ntfy | `["ntfy"]` | 手机已经订阅对应主题 |
 | 只用微信 | `["wechat"]` | 已完成 PushPlus 连接并保存本机密钥 |
 | ntfy 和微信都用 | `["ntfy", "wechat"]` | 两种方式都设置完成 |
+| 暂停全部 | `[]` | 主题和加密密钥保留 |
 
 旧配置没有 `channels` 时默认 ntfy。双通道会分别尝试发送；一条失败仍会尝试另一条。
 
@@ -194,6 +205,9 @@ Get-Content "$HOME\.codex\ntfy-codex.log" -Tail 20
 
 | 文件 | 用途 |
 | --- | --- |
+| docs/desktop.md | 软件窗口的安装、开关、配置、测试和卸载 |
+| desktop/Program.cs / desktop/desktop-backend.ps1 | Windows 图形界面及配置后端 |
+| build-desktop.ps1 | 编译便携版 Windows 软件 |
 | docs/ntfy.md | ntfy 的手机订阅、测试、设置和排查 |
 | docs/wechat.md | 微信的密钥连接、手环设置、限制和排查 |
 | install.ps1 / review-hooks.ps1 | 共用的电脑安装和钩子审查 |
@@ -211,6 +225,8 @@ pwsh.exe -NoProfile -File .\tests\run.ps1
 ~~~
 
 测试无需第三方框架，使用临时目录、测试密钥和模拟 HTTP，不读取真实订阅、不修改真正的 .codex。Windows PowerShell 5.1 与 PowerShell 7.6 均通过 52 项检查，GitHub Actions 也在两种 PowerShell 下执行。
+
+图形界面后端另通过 19 项隔离检查，真实 EXE 通过 7 项集成检查，覆盖安装、加密、渠道开关、全部暂停和卸载。图形界面已渲染检查。
 
 2026-10-11 实机验证：ntfy 在 iPhone 上收到完成与输入提醒；微信通过 PushPlus ClawBot 发到机器人聊天，iPhone 和小米手环 9 都实际收到聊天消息。Codex 测试版本为 0.162.0-alpha.17.2。Android 和 Apple Watch 未做本项目的实机验证。
 

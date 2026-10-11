@@ -12,3 +12,7 @@ test-results/
 
 *.dpapi
 wechat-send-state.json
+
+dist/
+*.exe
+*.pdb

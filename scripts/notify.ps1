@@ -82,7 +82,7 @@ try {
     elseif ($null -ne $settings.PSObject.Properties['channels']) {
         $channels = @($settings.channels | ForEach-Object { ([string]$_).Trim().ToLowerInvariant() } | Select-Object -Unique)
     }
-    if ($channels.Count -eq 0 -or @($channels | Where-Object { $_ -notin @('ntfy', 'wechat') }).Count -gt 0) { throw 'Invalid notification channels' }
+    if (@($channels | Where-Object { $_ -notin @('ntfy', 'wechat') }).Count -gt 0) { throw 'Invalid notification channels' }
     switch ($Event) {
         'done' {
             $title = Read-TextOption $settings 'title' 'Codex 任务已完成'
@@ -106,6 +106,11 @@ try {
 } catch {
     Write-DeliveryLog ('error/{0}: {1}' -f $Event, $_.Exception.GetType().Name)
     if ($Strict) { throw ('通知配置无法读取，请检查：' + $ConfigPath) }
+    return
+}
+if ($channels.Count -eq 0) {
+    Write-DeliveryLog 'notifications-paused'
+    if ($Strict) { throw '所有通知渠道已关闭，请先启用 ntfy 或微信。' }
     return
 }
 $failures = @()

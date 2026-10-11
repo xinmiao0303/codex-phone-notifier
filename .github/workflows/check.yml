@@ -19,3 +19,12 @@ jobs:
       - name: Verify PowerShell 7
         shell: pwsh
         run: .\tests\run.ps1
+      - name: Build Windows desktop app
+        shell: powershell
+        run: .\build-desktop.ps1
+      - name: Verify desktop backend and real executable
+        shell: powershell
+        run: .\tests\run-desktop.ps1
+      - name: Verify desktop backend on PowerShell 7
+        shell: pwsh
+        run: .\tests\run-desktop.ps1 -SkipExecutable
