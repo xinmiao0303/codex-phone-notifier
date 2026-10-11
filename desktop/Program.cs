@@ -39,7 +39,7 @@ namespace CodexPhoneNotifier
                 hash = BitConverter.ToString(sha.ComputeHash(file)).Replace("-", "").Substring(0, 12);
             PayloadDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CodexPhoneNotifier", "0.4.0-" + hash);
             Directory.CreateDirectory(PayloadDirectory);
-            string[] files = { "install.ps1", "uninstall.ps1", "review-hooks.ps1", "scripts/common.ps1", "scripts/notify.ps1", "desktop/desktop-backend.ps1" };
+            string[] files = { "install.ps1", "uninstall.ps1", "review-hooks.ps1", "scripts/common.ps1", "scripts/notify.ps1", "desktop/desktop-backend.ps1", "desktop/assets/LUCIDE-LICENSE.txt", "LICENSE" };
             foreach (string relative in files)
             {
                 string target = Path.Combine(PayloadDirectory, relative.Replace('/', Path.DirectorySeparatorChar));
@@ -117,7 +117,8 @@ namespace CodexPhoneNotifier
             Font = new Font("Microsoft YaHei UI", 9F); ForeColor = ink;
             BackColor = Color.FromArgb(243, 246, 251); AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = new Size(960, Math.Min(790, Screen.PrimaryScreen.WorkingArea.Height - 80)); MinimumSize = new Size(890, 650);
-            Icon = SystemIcons.Information;
+            using (Stream iconResource = Assembly.GetExecutingAssembly().GetManifestResourceStream("brand.icon"))
+            using (Icon brand = new Icon(iconResource)) Icon = (Icon)brand.Clone();
             BuildInterface();
             Shown += async delegate { if (!preview) await RunOperation("status", "", false); };
             FormClosing += delegate(object sender, FormClosingEventArgs args)
@@ -250,6 +251,9 @@ namespace CodexPhoneNotifier
                 string hint = keepConfig.Checked ? "卸载会移除本工具的自动通知钩子和发送脚本，保留主题及加密 Token。其他 Codex 配置保留。继续？" : "卸载会移除本工具的钩子、脚本、配置和加密 Token。其他 Codex 配置保留，原文件会先备份。继续？";
                 if (Confirm(hint)) await RunOperation("uninstall", "", false);
             }); uninstall.ForeColor = Color.FromArgb(169, 48, 57); Track(uninstall); flow.Controls.Add(uninstall);
+            Button iconSource = ButtonText("开源图标来源", 170, delegate { OpenUrl("https://lucide.dev/icons/bell-ring"); });
+            Button iconLicense = ButtonText("查看图标许可", 180, delegate { if (backend != null) Process.Start(new ProcessStartInfo("notepad.exe", "\"" + Path.Combine(backend.PayloadDirectory,"desktop","assets","LUCIDE-LICENSE.txt") + "\"") { UseShellExecute = true }); });
+            flow.Controls.Add(ButtonRow(iconSource, iconLicense));
             Label help = LabelText("关闭两个渠道可以暂停全部提醒，配置仍保留。软件不用一直开着，保存后可以直接关闭窗口。卸载只处理电脑端，不会卸载手机上的 ntfy 或微信。", 60); help.Width = 810; flow.Controls.Add(help);
         }
         private void Changed()

@@ -8,9 +8,10 @@ $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 if (-not [IO.File]::Exists($compiler)) { $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework\v4.0.30319\csc.exe' }
 if (-not [IO.File]::Exists($compiler)) { throw '找不到 Windows .NET Framework 编译器。请安装 .NET Framework 4.8。' }
+& (Join-Path $PSScriptRoot 'desktop\build-icon.ps1')
 $output = Join-Path $OutputDirectory 'CodexPhoneNotifier.exe'
-$arguments = @('/nologo', '/target:winexe', '/optimize+', '/platform:anycpu', '/utf8output', ('/out:' + $output), '/reference:System.dll', '/reference:System.Core.dll', '/reference:System.Drawing.dll', '/reference:System.Windows.Forms.dll', '/reference:System.Web.Extensions.dll')
-foreach ($relative in @('install.ps1','uninstall.ps1','review-hooks.ps1','scripts/common.ps1','scripts/notify.ps1','desktop/desktop-backend.ps1')) {
+$arguments = @('/nologo', '/target:winexe', '/optimize+', '/platform:anycpu', '/utf8output', ('/out:' + $output), '/reference:System.dll', '/reference:System.Core.dll', '/reference:System.Drawing.dll', '/reference:System.Windows.Forms.dll', '/reference:System.Web.Extensions.dll', ('/win32icon:' + (Join-Path $PSScriptRoot 'desktop/assets/notifier.ico')), ('/resource:' + (Join-Path $PSScriptRoot 'desktop/assets/notifier.ico') + ',brand.icon'))
+foreach ($relative in @('install.ps1','uninstall.ps1','review-hooks.ps1','scripts/common.ps1','scripts/notify.ps1','desktop/desktop-backend.ps1','desktop/assets/LUCIDE-LICENSE.txt','LICENSE')) {
     $arguments += '/resource:' + (Join-Path $PSScriptRoot $relative) + ',payload.' + $relative.Replace('/', '.')
 }
 $arguments += Join-Path $PSScriptRoot 'desktop/Program.cs'
