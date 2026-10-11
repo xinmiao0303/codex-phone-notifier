@@ -89,17 +89,94 @@ try {
     Assert-Check $strictFailed '严格测试不能把发送失败当成功'
     Remove-Item Function:\Invoke-RestMethod
 
+    # 微信只用模拟密钥和模拟 HTTP；本机加密存储也必须能正常解密。
+    $setupWechat = Join-Path $repository 'enable-wechat.ps1'
+    $fakeToken = 'test-token-never-a-real-account'
+    $secureToken = ConvertTo-SecureString $fakeToken -AsPlainText -Force
+    $hooksHash = (Get-FileHash -LiteralPath $hookFile).Hash
+    & $setupWechat -CodexHome $homeUnderTest -Token $secureToken -NoTest *> $null
+    $settings = Read-NotifierJson $config
+    $tokenFile = Join-Path $homeUnderTest 'pushplus-token.dpapi'
+    $stateFile = Join-Path $homeUnderTest 'wechat-send-state.json'
+    Assert-Check (@($settings.channels).Count -eq 2 -and $settings.channels -contains 'wechat') '连接微信默认保留 ntfy'
+    Assert-Check ((Get-FileHash -LiteralPath $hookFile).Hash -eq $hooksHash) '连接微信不改已信任的钩子命令'
+    Assert-Check (-not [IO.File]::ReadAllText($config).Contains($fakeToken) -and -not [IO.File]::ReadAllText($tokenFile).Contains($fakeToken)) '真实配置与密钥文件不保存明文 token'
+    Assert-Check ($settings.title -eq '自定义中文标题' -and $settings.priority -eq 'high') '连接微信保留已有标题和设置'
+    $wechatConfigHash = (Get-FileHash -LiteralPath $config).Hash
+    & $installer -CodexHome $homeUnderTest *> $null
+    Assert-Check ((Get-FileHash -LiteralPath $config).Hash -eq $wechatConfigHash -and [IO.File]::Exists($tokenFile)) '安装更新保留微信配置及加密密钥'
+
+    $global:NotifierTestRequests = @()
+    $global:NotifierTestFailure = ''
+    function Invoke-RestMethod {
+        param($Method, $Uri, $Headers, $Body, $ContentType, $TimeoutSec)
+        $decoded = [Text.Encoding]::UTF8.GetString($Body) | ConvertFrom-Json
+        $global:NotifierTestRequests += [pscustomobject]@{ payload=$decoded; uri=$Uri; timeout=$TimeoutSec }
+        if ($Uri -eq 'https://www.pushplus.plus/send') {
+            if ($global:NotifierTestFailure -eq 'wechat') { return [pscustomobject]@{ code=905; msg='not verified'; data=$null } }
+            if ($global:NotifierTestFailure -eq 'blocked') { return [pscustomobject]@{ code=900; msg='limited'; data=$null } }
+            return [pscustomobject]@{ code=200; data='local-wechat-id' }
+        }
+        if ($global:NotifierTestFailure -eq 'ntfy') { throw 'fake ntfy failure' }
+        return [pscustomobject]@{ id='local-ntfy-id'; event='message' }
+    }
+    & $notifySource -Event input -ConfigPath $config -Channel wechat -Strict *> $null
+    Assert-Check ($global:NotifierTestRequests.Count -eq 1 -and $global:NotifierTestRequests[0].uri -eq 'https://www.pushplus.plus/send') '微信测试仅请求 HTTPS 微信接口'
+    $wechatPayload = $global:NotifierTestRequests[0].payload
+    Assert-Check ($wechatPayload.token -eq $fakeToken -and $wechatPayload.channel -eq 'wechat' -and $wechatPayload.template -eq 'txt') '本机解密并选择微信纯文本渠道'
+    Assert-Check ($wechatPayload.title -eq 'Codex 等待你回答' -and $wechatPayload.content -match '时间：\d{4}-\d{2}-\d{2} {4}\d{2}:\d{2}:\d{2}$') '微信保留中文及时间格式'
+    Assert-Check ($null -eq $wechatPayload.PSObject.Properties['topic'] -and $null -eq $wechatPayload.PSObject.Properties['to']) '只发送给自己，不发送群组或好友'
+    $log = [IO.File]::ReadAllText((Join-Path $homeUnderTest 'ntfy-codex.log'))
+    Assert-Check ($log.Contains('queued/input/wechat') -and -not $log.Contains($fakeToken) -and -not $log.Contains('sent/input/wechat')) '只记请求排队，不把接口接受当成手机送达'
+
+    $global:NotifierTestRequests = @()
+    & $notifySource -Event done -ConfigPath $config -Strict *> $null
+    Assert-Check ($global:NotifierTestRequests.Count -eq 2 -and $global:NotifierTestRequests[0].timeout -eq 4 -and $global:NotifierTestRequests[1].timeout -eq 4) '双通道分别发送并限制总等待时间'
+    $global:NotifierTestFailure = 'ntfy'
+    $global:NotifierTestRequests = @()
+    $someFailed = $false
+    try { & $notifySource -Event test -ConfigPath $config -Strict *> $null } catch { $someFailed = $true }
+    Assert-Check ($someFailed -and $global:NotifierTestRequests.Count -eq 2) 'ntfy 失败仍尝试微信，严格测试报告部分失败'
+    $global:NotifierTestFailure = 'wechat'
+    $global:NotifierTestRequests = @()
+    $someFailed = $false
+    try { & $notifySource -Event test -ConfigPath $config -Strict *> $null } catch { $someFailed = $true }
+    Assert-Check ($someFailed -and $global:NotifierTestRequests.Count -eq 2) '微信实名错误不影响 ntfy，并报告失败'
+    $log = [IO.File]::ReadAllText((Join-Path $homeUnderTest 'ntfy-codex.log'))
+    Assert-Check ($log.Contains('api_code=905') -and -not $log.Contains($fakeToken)) '日志保留返回码但不包含 token'
+
+    $global:NotifierTestFailure = ''
+    $global:NotifierTestRequests = @()
+    & $notifySource -Event done -ConfigPath $config -Channel wechat *> $null
+    $global:NotifierTestRequests = @()
+    & $notifySource -Event done -ConfigPath $config -Channel wechat *> $null
+    Assert-Check ($global:NotifierTestRequests.Count -eq 0) '一分钟内达到五次后不再请求微信'
+    Remove-Item -LiteralPath $stateFile -Force
+    $global:NotifierTestFailure = 'blocked'
+    & $notifySource -Event done -ConfigPath $config -Channel wechat *> $null
+    $global:NotifierTestRequests = @()
+    $global:NotifierTestFailure = ''
+    & $notifySource -Event done -ConfigPath $config *> $null
+    Assert-Check ($global:NotifierTestRequests.Count -eq 1 -and $global:NotifierTestRequests[0].uri -ne 'https://www.pushplus.plus/send') '900 后暂停当日微信请求，ntfy 继续发送'
+    & $setupWechat -CodexHome $homeUnderTest -Token $secureToken -OnlyWechat -NoTest *> $null
+    $settings = Read-NotifierJson $config
+    Assert-Check (@($settings.channels).Count -eq 1 -and $settings.channels[0] -eq 'wechat' -and -not [IO.File]::Exists($stateFile)) '可切换仅微信并重置发送状态'
+    & $setupWechat -CodexHome $homeUnderTest -Disable *> $null
+    $settings = Read-NotifierJson $config
+    Assert-Check (@($settings.channels).Count -eq 1 -and $settings.channels[0] -eq 'ntfy' -and [IO.File]::Exists($tokenFile)) '关闭微信保留 ntfy 和加密密钥'
+    Remove-Item Function:\Invoke-RestMethod
+
     & $installer -CodexHome $homeUnderTest -NoInputReminder -NoStartupHook *> $null
     $after = Read-NotifierJson $hookFile
     Assert-Check (@($after.hooks.PreToolUse.hooks | Where-Object { $_.command -like '*-Event input' }).Count -eq 0) '可关闭输入提醒'
     Assert-Check (@($after.hooks.PreToolUse.hooks | Where-Object { $_.command -eq $foreign.command }).Count -eq 1) '关闭输入提醒不移除其他 PreToolUse'
     & $uninstaller -CodexHome $homeUnderTest -KeepConfig *> $null
     $after = Read-NotifierJson $hookFile
-    Assert-Check ([IO.File]::Exists($config) -and -not [IO.File]::Exists($installedScript)) '卸载可保留主题配置'
+    Assert-Check ([IO.File]::Exists($config) -and [IO.File]::Exists($tokenFile) -and -not [IO.File]::Exists($installedScript)) '卸载可保留主题配置和加密微信密钥'
     Assert-Check (@($after.hooks.Stop.hooks | Where-Object { $_.command -eq $foreign.command }).Count -eq 1) '卸载保留其他 Stop'
     Assert-Check ([IO.File]::ReadAllText($toml) -eq 'untouched = true') '卸载仍保留 config.toml'
     & $uninstaller -CodexHome $homeUnderTest *> $null
-    Assert-Check (-not [IO.File]::Exists($config)) '可再次卸载并移除配置'
+    Assert-Check (-not [IO.File]::Exists($config) -and -not [IO.File]::Exists($tokenFile)) '可再次卸载并移除配置及微信密钥'
 
     $invalidHome = Join-Path $workspace 'invalid'
     [IO.Directory]::CreateDirectory($invalidHome) | Out-Null

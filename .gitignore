@@ -9,3 +9,6 @@ config.toml
 backups/
 work/
 test-results/
+
+*.dpapi
+wechat-send-state.json

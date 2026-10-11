@@ -2,7 +2,7 @@
 
 **Codex 做完任务，或者正在等你选择、回答时，让手机提醒你。**
 
-这个小工具适合在 Windows 电脑上使用 Codex 的人。你可以离开电脑去做其他事情，不必一直盯着聊天窗口。
+这个小工具适合在 Windows 电脑上使用 Codex 的人。默认通过 ntfy 提醒，也可以选用微信（PushPlus）或同时使用两条通道。你可以离开电脑去做其他事情，不必一直盯着聊天窗口。
 
 收到提醒后，回到电脑继续使用 Codex。这个工具负责通知，不会替你回答问题或批准操作。
 
@@ -125,6 +125,67 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\send-test.ps1
 
 手动测试成功只说明发送通道可用，不能代替对钩子自动触发的验证。
 
+## 用微信接收提醒（可选）
+
+如果你的 iPhone 配小米手环，只能通过“其他”开关接收 ntfy，还会带上许多其他 App 的通知，可以试用微信通道：
+
+~~~text
+Codex → 本机脚本 → PushPlus 微信公众号 → 手机微信 → 手环
+~~~
+
+微信聊天等通知也会转发到手环；这个方案只解决不必开启“其他”，不能按消息内容只转发 Codex。
+
+### 连接微信
+
+1. 先完成上面的电脑安装。打开 [PushPlus 官网](https://www.pushplus.plus/)，用微信登录，按网站提示关注公众号并完成实名认证。
+2. 在网站“发送消息”等页面找到**用户 token 或消息 token**。不要把它发到聊天里，也不要填写开放接口的 AccessKey。
+3. 测试前退出手机微信的公众号聊天界面，把微信放到后台并锁屏。保持手机和手环的蓝牙连接。
+4. 在项目目录双击 **connect-wechat.cmd**，把 token 粘贴到弹出的密码框，点击“保存并测试”。也可以运行：
+
+~~~powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\enable-wechat.ps1 -Gui
+~~~
+
+密钥通过 Windows DPAPI 加密后存放在 Codex 目录的 **pushplus-token.dpapi**。它只适用于这台电脑的当前 Windows 用户；换电脑或换用户要重新填写。JSON 配置、控制台和日志都不输出明文密钥。
+
+默认保留 ntfy，同时增加微信，既有主题和自定义标题也保留。钩子命令不变，下次事件即可读取新设置；已经完成基础钩子审查和重启的用户无需为添加微信再次重启。
+
+### 确认手机与手环都收到
+
+“微信推送请求已提交”只表示 PushPlus 接受了请求，**不是手机已经收到**。在微信里检查新通知，再检查手环是否震动和显示内容。必要时检查微信通知权限、公众号的消息免打扰设置；也可在 PushPlus 网站查看该条消息的投递状态。
+
+微信和手环均验证成功后，再到小米运动健康的应用通知页面，关闭“其他”、开启“微信”。原来需要的电话或信息提醒可以照常保留。
+
+单独测试微信，不向 ntfy 再发一次：
+
+~~~powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\send-test.ps1 -Channel wechat
+~~~
+
+想让自动提醒只走微信，可以在 ntfy-codex.json 中把 channels 改为：
+
+~~~json
+"channels": ["wechat"]
+~~~
+
+同时使用两条通道则是 `["ntfy", "wechat"]`。这是配置中的一个字段，修改时保留原 JSON 的其他内容与逗号。
+
+### 关闭微信、回到 ntfy
+
+~~~powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\enable-wechat.ps1 -Disable
+~~~
+
+它保留本机加密密钥，自动提醒回到 ntfy。如果之前关闭了手环的“其他”，需要重新开启才能在手环上看到 ntfy。
+
+### 微信通道限制
+
+[PushPlus 官方额度说明](https://www.pushplus.plus/doc/guide/use.html)要求发送者实名认证；普通实名账户的微信通道每天最多 200 次请求，每分钟最多 5 次。这个工具每分钟最多尝试 5 次；超过时跳过微信并记录日志，ntfy 仍继续。不会自动重试，所以被跳过的微信提醒不会稍后补发。
+
+遇到账号受限的 900 返回码后，当天暂停微信请求，次日再尝试。日志里的 905 表示未实名、903 表示密钥无效。修复后可重新运行连接脚本更新密钥和发送状态。每条通知都只发给密钥所属的用户，不填写群组或好友参数。
+
+项目已验证微信请求编码、密钥保护和两条通道的独立失败处理；实际投递及手环显示要按上述步骤在自己的设备上确认。[PushPlus 消息接口说明](https://www.pushplus.plus/doc/guide/api.html)
+
 ## 常用设置
 
 配置默认在你的用户目录下：
@@ -143,6 +204,7 @@ notepad "$HOME\.codex\ntfy-codex.json"
 
 | 配置项 | 用途 |
 | --- | --- |
+| channels | 自动提醒通道；旧配置未填写时默认 ntfy |
 | server | ntfy 服务器 |
 | topic | 手机与电脑共同使用的主题 |
 | title | 完成提醒标题 |
@@ -214,7 +276,8 @@ Get-Content "$HOME\.codex\ntfy-codex.log" -Tail 20
 - **sent/done**：完成提醒已发送。
 - **input-hook-start**：输入提醒钩子已被调用。
 - **sent/input**：输入提醒已发送。
-- **error/事件**：发送失败。
+- **queued/事件/wechat**：微信推送请求被接受，仍需确认手机投递。
+- **error/事件/通道**：发送失败、微信请求限速或暂停。
 
 本地日志仅记录事件、时间、错误类型或消息编号，不记录令牌、主题和聊天正文。提交 Issue 前，也请不要粘贴真实配置、主题或访问令牌。
 
@@ -228,7 +291,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\uninstall.ps1
 
 它会移除本工具的三个钩子、通知脚本及订阅配置，保留其他工具的钩子、config.toml、聊天记录和备份。然后完整重启 Codex。
 
-想保留主题配置，方便以后重装：
+想保留主题配置和加密微信密钥，方便以后重装：
 
 ~~~powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\uninstall.ps1 -KeepConfig
@@ -244,6 +307,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\uninstall.ps1 -KeepCon
 | review-hooks.ps1 | 打开 Codex 自带的钩子审查界面 |
 | send-test.ps1 | 发送中文测试通知，失败会报错 |
 | uninstall.ps1 | 卸载，保留其他配置 |
+| connect-wechat.cmd / enable-wechat.ps1 | 打开微信密钥填写窗口、连接或关闭微信 |
 | scripts/notify.ps1 | 真正发送通知，安装后可以独立运行 |
 | scripts/common.ps1 | 安装/卸载共用的文件处理 |
 | config.example.json | 可公开的配置示例 |
@@ -262,7 +326,7 @@ pwsh.exe -NoProfile -File .\tests\run.ps1
 
 测试使用临时目录和模拟 HTTP，不会读取真实订阅、不向手机发消息，也不会修改真正的 .codex。
 
-测试覆盖中文 UTF-8、重复安装、与其他钩子共存、已有配置保留、发送失败、禁用输入提醒、卸载及错误 JSON。GitHub Actions 同时在 Windows PowerShell 和 PowerShell 7 上执行。
+测试覆盖微信 DPAPI 密钥、只发给自己、双通道独立失败、微信限速和暂停、中文 UTF-8、重复安装、与其他钩子共存、已有配置保留、发送失败、禁用输入提醒、卸载及错误 JSON。GitHub Actions 同时在 Windows PowerShell 和 PowerShell 7 上执行。
 
 发布前在 Windows PowerShell 5.1 与 PowerShell 7.6 下通过检查；Codex 0.162.0-alpha.17.2 上实际验证了任务完成与选择题提醒。Codex 后续版本的钩子行为可能变化，有问题欢迎提交 Issue。
 

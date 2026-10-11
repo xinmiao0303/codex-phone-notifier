@@ -31,6 +31,7 @@ if ($writeConfig) {
     $serverUri = $null
     if (-not [Uri]::TryCreate($Server, [UriKind]::Absolute, [ref]$serverUri) -or $serverUri.Scheme -notin @('http', 'https') -or $serverUri.UserInfo) { throw '服务器地址应以 http:// 或 https:// 开头，且不能包含用户名或密码。' }
     $settings = [pscustomobject][ordered]@{
+        channels = @('ntfy')
         server = $Server.TrimEnd('/')
         topic = $Topic
         title = 'Codex 任务已完成'

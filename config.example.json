@@ -7,5 +7,8 @@
   "priority": "default",
   "tags": "computer,white_check_mark",
   "inputTags": "computer,question",
-  "click": ""
+  "click": "",
+  "channels": [
+    "ntfy"
+  ]
 }
