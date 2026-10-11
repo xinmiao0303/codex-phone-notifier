@@ -26,6 +26,9 @@ if ($Disable) {
 }
 if ($null -eq $Token) {
     if ($Gui) {
+        # 使用当前 PowerShell 自带的加密模块，避免新版模块路径被旧版继承时加载冲突。
+        Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Security\Microsoft.PowerShell.Security.psd1') -ErrorAction Stop
+        $convertTokenCommand = Get-Command -Name ConvertTo-SecureString -CommandType Cmdlet -ErrorAction Stop
         Add-Type -AssemblyName System.Windows.Forms
         Add-Type -AssemblyName System.Drawing
         $form = [Windows.Forms.Form]::new()
@@ -59,9 +62,12 @@ if ($null -eq $Token) {
         $form.CancelButton = $cancel
         try {
             if ($form.ShowDialog() -ne [Windows.Forms.DialogResult]::OK) { Write-Host '已取消，没有修改配置。'; return }
-            $Token = ConvertTo-SecureString $box.Text.Trim() -AsPlainText -Force
+            $Token = & $convertTokenCommand -String ($box.Text.Trim()) -AsPlainText -Force
             $box.Clear()
-        } finally { $form.Dispose() }
+        } catch {
+            [Windows.Forms.MessageBox]::Show(('密钥尚未保存。Windows 密钥加密操作失败，错误类型：' + $_.Exception.GetType().Name + '。请保留 PowerShell 窗口，回到 Codex 继续排查。'), 'Codex 微信配置未完成', [Windows.Forms.MessageBoxButtons]::OK, [Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+            throw
+        } finally { $box.Clear(); $form.Dispose() }
     } else {
         Write-Host '从 https://www.pushplus.plus/ 复制用户 token 或消息 token。不要粘贴到聊天或命令参数里。'
         $Token = Read-Host '在这里粘贴 token（不会显示内容）' -AsSecureString
