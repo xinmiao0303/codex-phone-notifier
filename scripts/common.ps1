@@ -41,7 +41,7 @@ function Backup-NotifierFiles {
 function Remove-NotifierHandlers {
     param([object]$Hooks, [string]$ScriptPath)
     # 保留同一组里属于其他工具的命令，不删除整个钩子文件。
-    foreach ($eventName in @('Stop', 'PreToolUse', 'SessionStart')) {
+    foreach ($eventName in @('Stop', 'PreToolUse', 'PermissionRequest', 'SessionStart')) {
         $event = $Hooks.PSObject.Properties[$eventName]
         if ($null -eq $event) { continue }
         $groups = @()
@@ -63,8 +63,9 @@ function Remove-NotifierHandlers {
     }
 }
 function Add-NotifierHandler {
-    param([object]$Hooks, [string]$Event, [string]$Command, [string]$Matcher, [string]$Status)
+    param([object]$Hooks, [string]$Event, [string]$Command, [string]$Matcher, [string]$Status, [switch]$Async)
     $group = [pscustomobject]@{ hooks = @([pscustomobject]@{ type = 'command'; command = $Command; timeout = 15; statusMessage = $Status }) }
+    if ($Async) { Add-Member -InputObject $group.hooks[0] -NotePropertyName async -NotePropertyValue $true; $group.hooks[0].timeout=30 }
     if (-not [string]::IsNullOrWhiteSpace($Matcher)) { Add-Member -InputObject $group -NotePropertyName matcher -NotePropertyValue $Matcher }
     $property = $Hooks.PSObject.Properties[$Event]
     $existing = @()

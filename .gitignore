@@ -16,3 +16,5 @@ wechat-send-state.json
 dist/
 *.exe
 *.pdb
+
+notifier-event-state.json

@@ -147,16 +147,16 @@ try {
 
     $global:NotifierTestFailure = ''
     $global:NotifierTestRequests = @()
-    & $notifySource -Event done -ConfigPath $config -Channel wechat *> $null
+    & $notifySource -Event test -ConfigPath $config -Channel wechat *> $null
     $global:NotifierTestRequests = @()
-    & $notifySource -Event done -ConfigPath $config -Channel wechat *> $null
+    & $notifySource -Event test -ConfigPath $config -Channel wechat *> $null
     Assert-Check ($global:NotifierTestRequests.Count -eq 0) '一分钟内达到五次后不再请求微信'
     Remove-Item -LiteralPath $stateFile -Force
     $global:NotifierTestFailure = 'blocked'
-    & $notifySource -Event done -ConfigPath $config -Channel wechat *> $null
+    & $notifySource -Event test -ConfigPath $config -Channel wechat *> $null
     $global:NotifierTestRequests = @()
     $global:NotifierTestFailure = ''
-    & $notifySource -Event done -ConfigPath $config *> $null
+    & $notifySource -Event test -ConfigPath $config *> $null
     Assert-Check ($global:NotifierTestRequests.Count -eq 1 -and $global:NotifierTestRequests[0].uri -ne 'https://www.pushplus.plus/send') '900 后暂停当日微信请求，ntfy 继续发送'
     & $setupWechat -CodexHome $homeUnderTest -Token $secureToken -OnlyWechat -NoTest *> $null
     $settings = Read-NotifierJson $config

@@ -10,5 +10,6 @@
   "click": "",
   "channels": [
     "ntfy"
-  ]
+  ],
+  "approvalTitle": "Codex 等待你授权"
 }
