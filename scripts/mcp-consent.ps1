@@ -38,8 +38,38 @@ function Get-ConsentProxySource {
     }
     return $target
 }
+function Get-ConsentRuntimeOverride {
+    param([hashtable]$RuntimeEnvironment)
+    if($null -ne $RuntimeEnvironment){return $RuntimeEnvironment['CODEX_NODE_REPL_PATH']}
+    return [Environment]::GetEnvironmentVariable('CODEX_NODE_REPL_PATH','User')
+}
+function Set-ConsentRuntimeOverride {
+    param([AllowNull()][string]$Value,[hashtable]$RuntimeEnvironment)
+    if($null -ne $RuntimeEnvironment){
+        if([string]::IsNullOrEmpty($Value)){$RuntimeEnvironment.Remove('CODEX_NODE_REPL_PATH')}else{$RuntimeEnvironment['CODEX_NODE_REPL_PATH']=$Value}
+        return
+    }
+    [Environment]::SetEnvironmentVariable('CODEX_NODE_REPL_PATH',$Value,'User')
+    # 标准环境变更通知，让资源管理器启动的新 Codex 进程读取新值。
+    try{
+        if(-not ('CodexNotifier.EnvironmentBroadcast' -as [type])){
+            Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+namespace CodexNotifier {
+ public static class EnvironmentBroadcast {
+  [DllImport("user32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+  private static extern IntPtr SendMessageTimeout(IntPtr hwnd, uint msg, UIntPtr wp, string lp, uint flags, uint timeout, out UIntPtr result);
+  public static void Refresh() { UIntPtr result; SendMessageTimeout(new IntPtr(65535), 26, UIntPtr.Zero, "Environment", 2, 1000, out result); }
+ }
+}
+"@ | Out-Null
+        }
+        [CodexNotifier.EnvironmentBroadcast]::Refresh()
+    }catch{}
+}
 function Enable-ConsentProxy {
-    param([string]$Directory,[string]$Source)
+    param([string]$Directory,[string]$Source,[hashtable]$RuntimeEnvironment=$null)
     $config=Join-Path $Directory 'config.toml';$statePath=Join-Path $Directory 'mcp-consent-proxy.json'
     if(-not [IO.File]::Exists($config)){return $false}
     $text=[IO.File]::ReadAllText($config);$info=Get-ConsentMcpBlock $text
@@ -58,29 +88,39 @@ function Enable-ConsentProxy {
         $originalCommand=$info.Command;$originalCommandLine=$info.CommandLine;$originalArgsLine=$info.ArgsLine
     }
     if(-not [IO.File]::Exists($originalCommand)){throw '找不到原来的 node_repl 程序，插件启动配置未修改。'}
+    # 自定义目录的隔离测试/CLI 安装不改变全局环境；当前 Codex 主目录才配置桌面入口。
+    $useRuntime=$null -ne $RuntimeEnvironment -or [IO.Path]::GetFullPath($Directory).TrimEnd('\') -eq [IO.Path]::GetFullPath((Resolve-NotifierDirectory '')).TrimEnd('\')
+    $oldOverride=$null;$originalOverride=$null
+    if($useRuntime){
+        $oldOverride=Get-ConsentRuntimeOverride $RuntimeEnvironment
+        $runtimeOwned=$null -ne $priorState -and $priorState.runtimeOverride -and $oldOverride -eq $priorState.proxyCommand
+        if($oldOverride -and -not $runtimeOwned){throw 'CODEX_NODE_REPL_PATH 已有自定义运行程序，已保留；请先处理该设置再启用应用授权提醒。'}
+        if($runtimeOwned){$originalOverride=$priorState.originalUserOverride}else{$originalOverride=$oldOverride}
+    }
     $proxy=Get-ConsentProxySource $Directory $Source
     $newline="`n";if($text.Contains("`r`n")){$newline="`r`n"}
     $commandLine='command = '+(ConvertTo-Json -InputObject $proxy -Compress)+$newline
-    $proxyArguments=@('--config',(Join-Path $Directory 'ntfy-codex.json'),'--',$originalCommand)
-    $argsLine='args = '+(ConvertTo-Json -InputObject $proxyArguments -Compress)+$newline
+    $argsLine='args = []'+$newline
     $updated=Set-ConsentMcpLines $text $info $commandLine $argsLine
-    $record=[pscustomobject]@{version=1;server='node_repl';originalCommand=$originalCommand;originalCommandLine=$originalCommandLine;originalArgsLine=$originalArgsLine;proxyCommand=$proxy;proxyArgs=$proxyArguments}
+    $record=[pscustomobject]@{version=2;server='node_repl';originalCommand=$originalCommand;originalCommandLine=$originalCommandLine;originalArgsLine=$originalArgsLine;proxyCommand=$proxy;proxyArgs=@();runtimeOverride=$useRuntime;originalUserOverride=$originalOverride}
     $backup=Backup-NotifierFiles $Directory @($config,$statePath)
     $hadState=[IO.File]::Exists($statePath)
     try{
         if([IO.File]::ReadAllText($config) -ne $text){throw 'Codex 配置正在被其他程序修改，请稍后重试。'}
         Write-NotifierJson $statePath $record
         [IO.File]::WriteAllText($config,$updated,[Text.UTF8Encoding]::new($false))
+        if($useRuntime){Set-ConsentRuntimeOverride $proxy $RuntimeEnvironment}
     }catch{
         Copy-Item -LiteralPath (Join-Path $backup 'config.toml') -Destination $config -Force
         if($hadState){Copy-Item -LiteralPath (Join-Path $backup 'mcp-consent-proxy.json') -Destination $statePath -Force}
         elseif([IO.File]::Exists($statePath)){Remove-Item -LiteralPath $statePath -Force}
+        if($useRuntime -and (Get-ConsentRuntimeOverride $RuntimeEnvironment) -ne $oldOverride){Set-ConsentRuntimeOverride $oldOverride $RuntimeEnvironment}
         throw
     }
     return $true
 }
 function Disable-ConsentProxy {
-    param([string]$Directory)
+    param([string]$Directory,[hashtable]$RuntimeEnvironment=$null)
     $statePath=Join-Path $Directory 'mcp-consent-proxy.json';$config=Join-Path $Directory 'config.toml'
     if(-not [IO.File]::Exists($statePath)){return}
     $record=Read-NotifierJson $statePath
@@ -94,11 +134,13 @@ function Disable-ConsentProxy {
             [IO.File]::WriteAllText($config,$updated,[Text.UTF8Encoding]::new($false))
         }
     }
+    # 仅恢复仍指向本工具的环境设置，保留用户后来换用的其他运行程序。
+    if($record.runtimeOverride -and (Get-ConsentRuntimeOverride $RuntimeEnvironment) -eq $record.proxyCommand){Set-ConsentRuntimeOverride ([string]$record.originalUserOverride) $RuntimeEnvironment}
     Remove-Item -LiteralPath $statePath -Force
     $proxy=[string]$record.proxyCommand
     $scripts=[IO.Path]::GetFullPath((Join-Path $Directory 'scripts'))
     if($proxy -and [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($proxy)) -eq $scripts -and [IO.Path]::GetFileName($proxy) -match '^CodexMcpConsentProxy-[a-f0-9]{12}\.exe$'){
-        # 活动 MCP 连接可能仍占用旧文件；已恢复原启动器，重启后不再使用此文件。
+        # 活动 MCP 连接可能仍占用旧文件，退出后可清理。
         if([IO.File]::Exists($proxy)){try{Remove-Item -LiteralPath $proxy -Force -ErrorAction Stop}catch{}}
     }
 }

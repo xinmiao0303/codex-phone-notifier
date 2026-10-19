@@ -178,6 +178,27 @@ internal static class McpConsentProxy
     }
     private static int Run(string[] args)
     {
+        // 桌面的 CODEX_NODE_REPL_PATH 入口只传空参数，从本工具状态读取原程序。
+        // 原程序仍收到相同的 MCP 字节和环境；不修改 Codex 的安装文件。
+        if (args.Length == 0)
+        {
+            string directory = Path.GetDirectoryName(AppDomain.CurrentDomain.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar));
+            Dictionary<string, object> state = Parse(File.ReadAllText(Path.Combine(directory, "mcp-consent-proxy.json"), Encoding.UTF8));
+            object proxy, original;
+            if (state == null || !state.TryGetValue("proxyCommand", out proxy) || !state.TryGetValue("originalCommand", out original)) throw new ArgumentException();
+            string current = System.Reflection.Assembly.GetExecutingAssembly().Location;
+            if (!String.Equals(Path.GetFullPath(Convert.ToString(proxy)), Path.GetFullPath(current), StringComparison.OrdinalIgnoreCase)) throw new ArgumentException();
+            string childPath = Convert.ToString(original);
+            // 桌面升级后 Node 路径会换到新版本目录，使用同一官方运行时内的 node_repl。
+            string node = Environment.GetEnvironmentVariable("NODE_REPL_NODE_PATH");
+            if (!String.IsNullOrEmpty(node) && String.Equals(Path.GetFileName(node), "node.exe", StringComparison.OrdinalIgnoreCase))
+            {
+                string sibling = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(node)), "node_repl.exe");
+                if (File.Exists(sibling)) childPath = sibling;
+            }
+            if (!File.Exists(childPath) || !String.Equals(Path.GetFileName(childPath), "node_repl.exe", StringComparison.OrdinalIgnoreCase)) throw new ArgumentException();
+            args = new string[] { "--config", Path.Combine(directory, "ntfy-codex.json"), "--", childPath };
+        }
         int index = 0;
         scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "codex-ntfy-notify.ps1");
         configPath = "";

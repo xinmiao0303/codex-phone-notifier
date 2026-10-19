@@ -5,6 +5,7 @@ $ErrorActionPreference = 'Stop'
 [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 . (Join-Path $PSScriptRoot '..\scripts\common.ps1')
+. (Join-Path $PSScriptRoot '..\scripts\mcp-consent.ps1')
 function Get-DesktopStatus {
     $settings = Read-NotifierJson $configPath
     $document = Read-NotifierJson $hooksPath
@@ -57,6 +58,7 @@ function Save-DesktopSettings {
     if ($Install) { $paths += @($hooksPath,(Join-Path $directory 'config.toml'),(Join-Path $directory 'mcp-consent-proxy.json')) }
     $existing = @($paths | Where-Object { [IO.File]::Exists($_) })
     $backup = Backup-NotifierFiles $directory $paths
+    $oldRuntimeOverride = Get-ConsentRuntimeOverride
     try {
         if ($Install) {
             & (Join-Path $PSScriptRoot '..\install.ps1') -CodexHome $directory *> $null
@@ -78,6 +80,10 @@ function Save-DesktopSettings {
         Write-NotifierJson $configPath $settings
         $script:settingsSaved = $true
     } catch {
+        if($Install){
+            $native = Read-NotifierJson (Join-Path $directory 'mcp-consent-proxy.json')
+            if($native.runtimeOverride -and (Get-ConsentRuntimeOverride) -eq $native.proxyCommand){Set-ConsentRuntimeOverride $oldRuntimeOverride}
+        }
         foreach ($path in $paths) {
             if ($existing -contains $path) { Copy-Item -LiteralPath (Join-Path $backup ([IO.Path]::GetFileName($path))) -Destination $path -Force }
             elseif ([IO.File]::Exists($path)) { Remove-Item -LiteralPath $path -Force }

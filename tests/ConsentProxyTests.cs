@@ -117,6 +117,49 @@ internal static class ConsentProxyTests
             Assert(errors.GetAwaiter().GetResult().Trim() == "fake-server-diagnostic", "stderr forwarding was modified");
             foreach (string id in Markers(marker)) Assert(System.Text.RegularExpressions.Regex.IsMatch(id, "^[a-f0-9]{64}$"), "Request body leaked into notification arguments");
         }
+        // 实际桌面入口传空参数；状态文件必须指向当前转发器和原程序。
+        string home = marker + "-default", scripts = Path.Combine(home, "scripts");
+        Directory.CreateDirectory(scripts);
+        string launcher = Path.Combine(scripts, "CodexMcpConsentProxy-test.exe");
+        File.Copy(proxy, launcher);
+        File.Copy(notify, Path.Combine(scripts, "codex-ntfy-notify.ps1"));
+        string statePath = Path.Combine(home, "mcp-consent-proxy.json");
+        Dictionary<string, object> state = new Dictionary<string, object> { { "proxyCommand", launcher }, { "originalCommand", Assembly.GetExecutingAssembly().Location } };
+        File.WriteAllText(statePath, Encode(state), new UTF8Encoding(false));
+        ProcessStartInfo defaultStart = new ProcessStartInfo(launcher);
+        defaultStart.UseShellExecute = false; defaultStart.CreateNoWindow = true;
+        defaultStart.RedirectStandardInput = true; defaultStart.RedirectStandardOutput = true; defaultStart.RedirectStandardError = true;
+        defaultStart.StandardOutputEncoding = Encoding.UTF8;
+        using (Process process = Process.Start(defaultStart))
+        {
+            process.StandardInput.AutoFlush = true;
+            Send(process, new Dictionary<string, object> { { "method", "ping" } });
+            Emit(process, Request(31), false);
+            WaitCount(Path.Combine(home, "ntfy-codex.json"), 1);
+            Send(process, Response(31, "accept"));
+            process.StandardInput.Close();
+            Assert(process.WaitForExit(5000) && process.ExitCode == 0, "Desktop empty-argument runtime did not exit cleanly");
+        }
+        // 桌面升级并清理旧 Node 目录后，仍应使用 Codex 传入的新运行时。
+        string runtime = Path.Combine(home, "runtime"); Directory.CreateDirectory(runtime);
+        File.Copy(Assembly.GetExecutingAssembly().Location, Path.Combine(runtime, "node_repl.exe"));
+        state["originalCommand"] = Path.Combine(home, "removed-runtime", "node_repl.exe");
+        File.WriteAllText(statePath, Encode(state), new UTF8Encoding(false));
+        defaultStart.EnvironmentVariables["NODE_REPL_NODE_PATH"] = Path.Combine(runtime, "node.exe");
+        using (Process upgraded = Process.Start(defaultStart))
+        {
+            upgraded.StandardInput.AutoFlush = true;
+            Send(upgraded, new Dictionary<string, object> { { "method", "ping" } });
+            upgraded.StandardInput.Close();
+            Assert(upgraded.WaitForExit(5000) && upgraded.ExitCode == 0, "Codex runtime upgrade broke the launcher");
+        }
+        state["proxyCommand"] = proxy;
+        File.WriteAllText(statePath, Encode(state), new UTF8Encoding(false));
+        using (Process invalid = Process.Start(defaultStart))
+        {
+            invalid.StandardInput.Close();
+            Assert(invalid.WaitForExit(5000) && invalid.ExitCode != 0, "Mismatched launcher state must fail safely");
+        }
         Console.WriteLine("PASS: MCP consent relay " + checks + " checks"); return 0;
     }
     private static int Main(string[] args)

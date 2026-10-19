@@ -32,7 +32,7 @@ try{if(-not `$mutex.WaitOne(5000)){throw 'busy'};[IO.File]::AppendAllText(`$Conf
  $source=Join-Path $repo 'desktop/McpConsentProxy.cs'
  Assert-Consent (Enable-ConsentProxy $directory $source) '安装原生授权连接失败'
  $after=[IO.File]::ReadAllText($config);$info=Get-ConsentMcpBlock $after
- Assert-Consent ([IO.File]::Exists($info.Command) -and $info.Command -ne $client -and $info.Args[-1] -eq $client -and $info.Args[0] -eq '--config' -and $info.Args[1] -eq (Join-Path $directory 'ntfy-codex.json')) '插件原程序和空参数未保留'
+ Assert-Consent ([IO.File]::Exists($info.Command) -and $info.Command -ne $client -and $info.Args.Count -eq 0 -and (Read-NotifierJson (Join-Path $directory 'mcp-consent-proxy.json')).originalCommand -eq $client) '插件原程序和空参数未保留'
  Assert-Consent ($after.Contains("startup_timeout_sec = 120`r`n[mcp_servers.node_repl.env]`r`nTEST_VALUE = 'keep'`r`n[windows]`r`nsandbox = 'elevated'")) '其他配置或插件环境变量被修改'
  Assert-Consent (Enable-ConsentProxy $directory $source) '重复更新失败'
  Assert-Consent ([IO.File]::ReadAllText($config) -eq $after) '重复更新不能再次套一层代理'
@@ -54,6 +54,24 @@ try{if(-not `$mutex.WaitOne(5000)){throw 'busy'};[IO.File]::AppendAllText(`$Conf
  Assert-Consent (Enable-ConsentProxy $directory $source) '缺省 args 时安装失败'
  Disable-ConsentProxy $directory
  Assert-Consent ([IO.File]::ReadAllText($config) -eq $missingArgs) '缺省 args 卸载未恢复原配置'
+ # 用内存环境模拟桌面启动入口，绝不改测试机器真实环境。
+ $runtime=@{}
+ Assert-Consent (Enable-ConsentProxy $directory $source $runtime) '桌面运行入口安装失败'
+ $info=Get-ConsentMcpBlock ([IO.File]::ReadAllText($config))
+ Assert-Consent ($runtime.CODEX_NODE_REPL_PATH -eq $info.Command -and $info.Args.Count -eq 0) '桌面重新生成的空参数命令不能启动转发器'
+ [IO.File]::WriteAllText($config,$missingArgs,[Text.UTF8Encoding]::new($false))
+ Assert-Consent (Enable-ConsentProxy $directory $source $runtime) '旧桌面环境覆盖配置后升级失败'
+ $record=Read-NotifierJson (Join-Path $directory 'mcp-consent-proxy.json')
+ Assert-Consent ($record.originalCommand -eq $client -and -not $record.originalUserOverride) '升级丢失原程序或把代理作为原程序'
+ Disable-ConsentProxy $directory $runtime
+ Assert-Consent (-not $runtime.ContainsKey('CODEX_NODE_REPL_PATH') -and [IO.File]::ReadAllText($config) -eq $missingArgs) '卸载未恢复环境与配置'
+ $runtime.CODEX_NODE_REPL_PATH='custom-user-runtime.exe';$rejected=$false
+ try{Enable-ConsentProxy $directory $source $runtime|Out-Null}catch{$rejected=$_.Exception.Message.Contains('CODEX_NODE_REPL_PATH')}
+ Assert-Consent ($rejected -and $runtime.CODEX_NODE_REPL_PATH -eq 'custom-user-runtime.exe' -and [IO.File]::ReadAllText($config) -eq $missingArgs) '不应覆盖其他自定义运行程序'
+ $runtime.Clear();Enable-ConsentProxy $directory $source $runtime|Out-Null
+ $runtime.CODEX_NODE_REPL_PATH='later-user-runtime.exe'
+ Disable-ConsentProxy $directory $runtime
+ Assert-Consent ($runtime.CODEX_NODE_REPL_PATH -eq 'later-user-runtime.exe') '卸载应保留用户后来设置的运行程序'
  [IO.File]::WriteAllText($config,'keep = true',[Text.UTF8Encoding]::new($false))
  Assert-Consent (-not (Enable-ConsentProxy $directory $source) -and [IO.File]::ReadAllText($config) -eq 'keep = true') '未安装对应插件时不应改写配置'
  Write-Host ('PASS: consent installation {0} checks; PowerShell {1}' -f $checks,$PSVersionTable.PSVersion)
