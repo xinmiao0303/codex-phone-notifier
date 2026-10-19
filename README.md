@@ -1,6 +1,6 @@
 # Codex 手机提醒
 
-**Codex 做完这一轮任务，或者正在等你选择、回答、授权时，让手机提醒你。**
+**Codex 做完这一轮任务，或者正在等你选择、回答时，让手机提醒你。**
 
 适合在 Windows 电脑上使用 Codex 的人。你可以离开电脑去做其他事情，收到提醒后再回来继续。这个工具负责通知，不会替你回答问题或批准操作。
 
@@ -36,14 +36,15 @@
 | --- | --- | --- |
 | Codex 完成这一轮回复 | Codex 任务已完成 | 回来查看结果 |
 | Codex 弹出选择题或纯文字输入框 | Codex 等待你回答 | 回来选择或输入答案 |
-| Codex 请求工具、插件或电脑访问权限 | Codex 等待你授权 | 回来检查权限并确认 |
 | 你主动发送测试 | Codex 通知测试 | 检查接收是否正常 |
 
 标题和正文默认使用中文。正文只有提醒、电脑名称和时间，不包含聊天内容、代码或问题正文。时间示例：`2026-10-11    08:30:00`，日期和时刻之间四个空格，不显示 `+08:00`。
 
 完成提醒只面向交互式主聊天：脚本读取本机会话记录，确认这一轮真正结束后才发送。同一轮、同一通道只提醒一次；后台内部任务、子任务、思考过程及被中断的轮次不会单独报完成。完成一轮回复不等于整个项目做完。启动 Codex 不发手机提醒。
 
-选择题和纯文字输入框都能提醒；如果只是回复正文里写了一句问话、没有调用提问工具，则不会产生独立的等待输入事件。授权提醒接收 Codex 的 `PermissionRequest` 和显式 `request_permissions` 调用，只发送提醒，所有授权仍由用户操作。插件自己的网页登录、OAuth 或不经过这些事件的弹窗，不在此覆盖范围。事件定义见 [OpenAI 官方 hooks 文档](https://learn.chatgpt.com/docs/hooks)。
+选择题和纯文字输入框都能提醒；如果只是回复正文里写了一句问话、没有调用提问工具，则不会产生独立的等待输入事件。
+
+**0.5.1 起不发送任何授权提醒。** 自动审批中的请求不需要你回来处理；权限事件发生在审批之前，无法可靠确认最后是否弹出“是否允许访问”；Computer Use 还有单独的应用授权流程。因此不根据权限请求或工具名字猜测是否需要你操作。任务完成与等待回答提醒照常。参见 [hooks 事件说明](https://learn.chatgpt.com/docs/hooks)和 [自动审批与 Computer Use 的区别](https://learn.chatgpt.com/docs/sandboxing/auto-review)。
 
 会话记录格式属于 Codex 内部实现，可能随版本变化；遇到无法识别或不能确认结束的记录时，脚本会跳过完成提醒并记录原因，不会猜测任务已经完成。
 
@@ -104,8 +105,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\review-hooks.ps1
 找到命令指向 **codex-ntfy-notify.ps1** 的本工具钩子，检查后信任：
 
 - **Stop**：在后台确认主轮次真正结束，去重后发送完成提醒。
-- **PreToolUse**：选择题、纯文字输入框和显式权限申请提醒。
-- **PermissionRequest**：Codex 等待工具或插件权限确认时发送授权提醒。
+- **PreToolUse**：仅在弹出选择题或纯文字输入框时提醒。
 - **SessionStart**：只登记本地日志。
 
 不要信任不认识的其他工具的钩子。完成后用 Ctrl+C 退出终端里的 Codex，必要时再按一次。
@@ -117,7 +117,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\review-hooks.ps1
 1. 让 Codex 完成一个简短任务，回复结束后检查 **Codex 任务已完成**。
 2. 让 Codex **弹出一道选择题，并先停留在提问阶段**，问题出现时检查 **Codex 等待你回答**。
 
-3. 出现真实工具或插件授权弹窗时，检查 **Codex 等待你授权**；无需为了测试而开放不需要的权限。
+3. 自动审批或任何权限申请都不应收到“等待你授权”。
 
 手动发送测试成功，只说明通知通道可用；还需要用真实任务和问题框验证自动触发。已经审查过并重启的用户，仅切换通知通道或修改标题时，无需重新装钩子或重启。
 
@@ -165,10 +165,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\send-test.ps1 -Channel
 
 [config.example.json](config.example.json) 只是可公开的示例，不是任何人的真实配置。具体设置与限制分别见 [ntfy 教程](docs/ntfy.md)和[微信教程](docs/wechat.md)。
 
-只要完成提醒、不需要等待回答和授权提醒：
+只要完成提醒、不需要等待回答提醒：
 
 ~~~powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -NoInputReminder -NoApprovalReminder
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -NoInputReminder
 ~~~
 
 修改钩子后完整重启 Codex。它不会移除其他工具的提问前钩子。
@@ -191,7 +191,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\uninstall.ps1
 
 - ntfy App 收不到：看 [ntfy 排查](docs/ntfy.md#ntfy-收不到时检查什么)。
 - 微信或手环收不到：看 [微信与手环排查](docs/wechat.md#微信或手环收不到时检查什么)。
-- 手动测试能收到、自动提醒收不到：检查钩子是否已信任、是否完整重启、是否真的弹出了问题框或授权弹窗。正文里的普通问句不等于提问工具。
+- 手动测试能收到、自动提醒收不到：检查钩子是否已信任、是否完整重启、是否真的弹出了问题框。正文里的普通问句不等于提问工具。
 - 检查当前工作模式是否支持本地命令钩子；部分云端编排场景不支持，即使工具在本机执行。参考 [Codex hooks 文档](https://learn.chatgpt.com/docs/hooks)。
 
 查看日志：
@@ -205,8 +205,8 @@ Get-Content "$HOME\.codex\ntfy-codex.log" -Tail 20
 | sent/test、sent/done、sent/input | ntfy | 消息已发布到 ntfy 服务，仍要检查手机是否收到 |
 | queued/事件/wechat | 微信 | PushPlus 接受了请求，还不代表手机或手环收到 |
 | input-hook-start | 共用钩子 | 问题框触发了输入提醒 |
-| approval-hook-start | 共用钩子 | 授权请求触发了提醒 |
 | skip/done | 共用钩子 | 后台会话、尚未结束或无法确认，不发送完成提醒 |
+| skip/approval: disabled | 共用钩子 | 当前进程仍调用旧授权钩子，已静默跳过 |
 | skip/事件/通道: duplicate-or-busy | 对应通道 | 同一事件已发送或正在发送，跳过重复 |
 | error/事件/通道 | 对应通道 | 发送失败、限速或暂停 |
 
@@ -229,16 +229,18 @@ Get-Content "$HOME\.codex\ntfy-codex.log" -Tail 20
 | scripts/common.ps1 | 安装、配置和卸载的共用文件处理 |
 | config.example.json | 可公开的配置示例 |
 | tests/run.ps1 | 隔离检查，不向真实手机发消息 |
-| tests/run-hook-events.ps1 | 主会话结束、后台误报、并发去重及授权提醒回归检查 |
+| tests/run-hook-events.ps1 | 主会话结束、后台误报、并发去重及移除授权提醒的回归检查 |
+| tests/run-hook-stdin.ps1 | Windows PowerShell 真实标准输入、中文、表情及 BOM 检查 |
 
 ~~~powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\run.ps1
 pwsh.exe -NoProfile -File .\tests\run.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\run-hook-events.ps1
 pwsh.exe -NoProfile -File .\tests\run-hook-events.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\run-hook-stdin.ps1
 ~~~
 
-测试无需第三方框架，使用临时目录、测试密钥和模拟 HTTP，不读取真实订阅、不修改真正的 .codex。Windows PowerShell 5.1 与 PowerShell 7.6 均通过 52 项检查，GitHub Actions 也在两种 PowerShell 下执行。
+测试无需第三方框架，使用临时目录、测试密钥和模拟 HTTP，不读取真实订阅、不修改真正的 .codex。Windows PowerShell 5.1 与 PowerShell 7.6 均通过基础配置 52 项、事件回归 47 项和真实标准输入 10 项检查；GitHub Actions 执行同一套检查。
 
 图形界面后端另通过 19 项隔离检查，真实 EXE 通过 7 项集成检查，覆盖安装、加密、渠道开关、全部暂停和卸载。图形界面已渲染检查。
 

@@ -25,6 +25,9 @@ jobs:
       - name: Verify event filtering and duplicate protection (PowerShell 7)
         shell: pwsh
         run: .\tests\run-hook-events.ps1
+      - name: Verify real hook stdin and UTF-8
+        shell: powershell
+        run: .\tests\run-hook-stdin.ps1
       - name: Build Windows desktop app
         shell: powershell
         run: .\build-desktop.ps1

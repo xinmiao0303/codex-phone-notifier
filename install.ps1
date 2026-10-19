@@ -5,6 +5,7 @@ param(
     [string]$Server = 'https://ntfy.sh',
     [string]$CodexHome = '',
     [switch]$NoInputReminder,
+    # 兼容旧命令；本版本始终关闭授权提醒。
     [switch]$NoApprovalReminder,
     [switch]$NoStartupHook,
     [switch]$ForceConfig,
@@ -37,7 +38,6 @@ if ($writeConfig) {
         topic = $Topic
         title = 'Codex 任务已完成'
         inputTitle = 'Codex 等待你回答'
-        approvalTitle = 'Codex 等待你授权'
         testTitle = 'Codex 通知测试'
         priority = 'default'
         tags = 'computer,white_check_mark'
@@ -50,7 +50,6 @@ Remove-NotifierHandlers $hooks $targetScript
 $prefix = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' + $targetScript + '" -Event '
 Add-NotifierHandler $hooks 'Stop' ($prefix + 'done') '' '确认主轮次结束后发送完成提醒' -Async
 if (-not $NoInputReminder) { Add-NotifierHandler $hooks 'PreToolUse' ($prefix + 'input') '(^|[._])request_user_input(_async)?$' '发送 Codex 等待输入提醒' }
-if (-not $NoApprovalReminder) { Add-NotifierHandler $hooks 'PermissionRequest' ($prefix + 'approval') '' '发送 Codex 等待授权提醒'; Add-NotifierHandler $hooks 'PreToolUse' ($prefix + 'approval') '(^|[._])request_permissions$' '发送 Codex 权限申请提醒' }
 if (-not $NoStartupHook) { Add-NotifierHandler $hooks 'SessionStart' ($prefix + 'startup') '^startup$' '准备 Codex 手机提醒' }
 [IO.Directory]::CreateDirectory($directory) | Out-Null
 $paths = @($hooksFile, $configFile, $targetScript)

@@ -10,6 +10,7 @@ param(
     [object]$HookInput = $null
 )
 $ErrorActionPreference = 'Stop'
+[Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
 # 安装后独立运行；不依赖仓库中的其他文件。
 $notifierDirectory = $env:CODEX_HOME
 if ([string]::IsNullOrWhiteSpace($notifierDirectory)) { $notifierDirectory = Join-Path $env:USERPROFILE '.codex' }
@@ -168,17 +169,19 @@ function Set-EventReservation {
     finally { if ($held) { $gate.ReleaseMutex() }; $gate.Dispose() }
 }
 # Hook stdin 只在本机解析，不写入日志或手机消息，尤其不泄漏 tool_input。
+# 兼容 Codex 当前进程缓存的 0.5.0 授权钩子：静默返回，不发送也不作审批决定。
+if ($Event -eq 'approval') { Write-DeliveryLog 'skip/approval: disabled'; return }
 $eventKey=''; $eventOwner=[guid]::NewGuid().ToString('N')
 if ($Event -notin @('startup','test')) {
     if ($null -eq $HookInput -and [Console]::IsInputRedirected) {
         $raw=[Console]::In.ReadToEnd()
         if (-not [string]::IsNullOrWhiteSpace($raw)) {
-            try { $HookInput=$raw | ConvertFrom-Json -ErrorAction Stop }
-            catch { Write-DeliveryLog ('skip/{0}: invalid-hook-input' -f $Event); return }
+            try { $HookInput=$raw.TrimStart([char]0xFEFF) | ConvertFrom-Json -ErrorAction Stop }
+            catch { $prefix=0; if ($raw.Length) { $prefix=[int][char]$raw[0] }; Write-DeliveryLog ('skip/{0}: invalid-hook-input encoding={1} first={2} length={3} error={4}' -f $Event,[Console]::InputEncoding.WebName,$prefix,$raw.Length,$_.Exception.GetType().Name); return }
         }
     }
     if ($null -ne $HookInput) {
-        if ($Event -eq 'input' -and [string]$HookInput.tool_name -match '(^|[._])request_permissions$') { $Event='approval' }
+        if ([string]$HookInput.hook_event_name -eq 'PermissionRequest' -or [string]$HookInput.tool_name -match '(^|[._])request_permissions$') { Write-DeliveryLog 'skip/approval: disabled'; return }
         $context=Read-TranscriptContext $HookInput -Completion:($Event -eq 'done')
         # Stop 在后台运行，等主轮次真正写入 task_complete；不会阻塞 Codex。
         for ($attempt=0; $Event -eq 'done' -and $context.reason -eq 'awaiting-completion' -and $attempt -lt 20; $attempt++) {
@@ -195,7 +198,6 @@ if ($Event -notin @('startup','test')) {
                 if ($HookInput.tool_use_id) { $identity+='|'+[string]$HookInput.tool_use_id }
                 else { $identity+='|'+($HookInput.tool_input | ConvertTo-Json -Depth 20 -Compress) }
             }
-            if ($Event -eq 'approval') { $identity+='|'+[string]$HookInput.tool_name+'|'+($HookInput.tool_input | ConvertTo-Json -Depth 20 -Compress) }
             $eventKey=Get-NotifierDigest $identity
         }
     } elseif ($Event -eq 'done' -and -not $Strict) {
@@ -204,7 +206,6 @@ if ($Event -notin @('startup','test')) {
 }
 if ($Event -eq 'startup') { Write-DeliveryLog 'startup-ready'; return }
 if ($Event -eq 'input') { Write-DeliveryLog 'input-hook-start' }
-if ($Event -eq 'approval') { Write-DeliveryLog 'approval-hook-start' }
 try {
     $settings = [IO.File]::ReadAllText($ConfigPath) | ConvertFrom-Json
     $channels = @('ntfy')
@@ -223,11 +224,6 @@ try {
             $title = Read-TextOption $settings 'inputTitle' 'Codex 等待你回答'
             $summary = 'Codex 正在等待你选择或回答，请返回电脑处理。'
             $tags = Read-TextOption $settings 'inputTags' 'computer,question'
-        }
-        'approval' {
-            $title = Read-TextOption $settings 'approvalTitle' 'Codex 等待你授权'
-            $summary = 'Codex 正在等待你确认工具或插件的访问权限，请返回电脑处理。'
-            $tags = 'computer,lock'
         }
         'test' {
             $title = Read-TextOption $settings 'testTitle' 'Codex 通知测试'

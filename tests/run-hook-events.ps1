@@ -9,10 +9,11 @@ $config=Join-Path $directory 'ntfy-codex.json'
 $transcript=Join-Path $workspace 'main.jsonl'
 $script:checks=0
 function Assert-Event([bool]$OK,[string]$Message) { if(-not $OK){throw ('验证失败：'+$Message)}; $script:checks++ }
-function Write-Sample([string]$Session,[string]$Turn,[string]$Phase='final_answer',[object]$Source='vscode',[string]$Parent='', [switch]$NoComplete,[string]$ThreadSource='user') {
+function Write-Sample([string]$Session,[string]$Turn,[string]$Phase='final_answer',[object]$Source='vscode',[string]$Parent='', [switch]$NoComplete,[string]$ThreadSource='user',[string]$Reviewer='user') {
     $records=@(
         [pscustomobject]@{type='session_meta';payload=[pscustomobject]@{id=$Session;source=$Source;parent_thread_id=$Parent;thread_source=$ThreadSource}},
         [pscustomobject]@{type='event_msg';payload=[pscustomobject]@{type='task_started';turn_id=$Turn}},
+        [pscustomobject]@{type='turn_context';payload=[pscustomobject]@{turn_id=$Turn;approvals_reviewer=$Reviewer}},
         [pscustomobject]@{type='response_item';payload=[pscustomobject]@{type='message';role='assistant';phase=$Phase;content=@([pscustomobject]@{type='output_text';text='示例消息'})}}
     )
     if ($Phase -in @('final','final_answer') -and -not $NoComplete) { $records+=[pscustomobject]@{type='event_msg';payload=[pscustomobject]@{type='task_complete';turn_id=$Turn}} }
@@ -92,15 +93,23 @@ try {
     $inputObject.tool_use_id='question-2'
     & $notify -Event input -ConfigPath $config -HookInput $inputObject *> $null
     Assert-Event ($global:EventRequests.Count -eq $before+2) '同一轮次的另一个问题仍会提醒'
-    $inputObject=New-Input 'main' 'questions' 'mcp__computer_use__connect'
     $before=$global:EventRequests.Count
-    $hookOutput=@(& $notify -Event approval -ConfigPath $config -HookInput $inputObject)
-    & $notify -Event approval -ConfigPath $config -HookInput $inputObject *> $null
-    Assert-Event ($global:EventRequests.Count -eq $before+1 -and $global:EventRequests[-1].payload.title -eq 'Codex 等待你授权') '插件权限申请提醒单独命名且去重'
-    Assert-Event ($hookOutput.Count -eq 0) '授权提醒不输出允许或拒绝决定'
-    Assert-Event (($global:EventRequests[-1].payload | ConvertTo-Json -Depth 12) -notmatch 'TEST_PRIVATE_ARGUMENT') '手机消息不包含工具参数'
-    & $notify -Event input -ConfigPath $config -HookInput (New-Input 'main' 'questions' 'functions.request_permissions' 'permission-1') *> $null
-    Assert-Event ($global:EventRequests[-1].payload.title -eq 'Codex 等待你授权') '显式 request_permissions 使用授权提醒'
+    foreach($reviewer in @('user','auto_review','')) {
+        Write-Sample 'main' 'permissions' 'commentary' -Reviewer $reviewer
+        foreach($tool in @('Bash','apply_patch','functions.request_permissions','mcp__computer_use__connect','mcp__node_repl__js')) {
+            $inputObject=New-Input 'main' 'permissions' $tool
+            $hookOutput=@(& $notify -Event approval -ConfigPath $config -HookInput $inputObject)
+            Assert-Event ($global:EventRequests.Count -eq $before -and $hookOutput.Count -eq 0) ('关闭授权提醒且不输出审批决定：'+$reviewer+'/'+$tool)
+        }
+    }
+    & $notify -Event approval -ConfigPath $config *> $null
+    Assert-Event ($global:EventRequests.Count -eq $before) '旧进程缓存的审批钩子没有上下文时也静默返回'
+    & $notify -Event input -ConfigPath $config -HookInput (New-Input 'main' 'permissions' 'functions.request_permissions') *> $null
+    Assert-Event ($global:EventRequests.Count -eq $before) '旧权限申请不能被当成等待回答提醒'
+    $inputObject=New-Input 'main' 'permissions' 'Bash'
+    Add-Member -InputObject $inputObject -NotePropertyName hook_event_name -NotePropertyValue 'PermissionRequest'
+    & $notify -Event input -ConfigPath $config -HookInput $inputObject *> $null
+    Assert-Event ($global:EventRequests.Count -eq $before) '权限事件误标为 input 时仍不发送'
     $statePath=Join-Path $directory 'notifier-event-state.json'
     Assert-Event ([IO.File]::ReadAllText($statePath) -notmatch 'TEST_PRIVATE_ARGUMENT|questions|mcp__computer_use') '去重文件只保存摘要，不保存参数和会话正文'
     Assert-Event (@((Read-NotifierJson (Join-Path $directory 'hooks.json')).hooks.Stop.hooks | Where-Object { $_.async -eq $true }).Count -eq 1) '完成钩子后台运行，可以观察真正的轮次结束'
@@ -148,15 +157,20 @@ function Invoke-RestMethod {
     & $notify -Event done -ConfigPath $config -HookInput $continued *> $null
     Assert-Event ($global:EventRequests.Count -eq $before+1) '续跑之后真正结束的轮次仍能提醒'
     $hooks=Read-NotifierJson (Join-Path $directory 'hooks.json')
-    $owned=@($hooks.hooks.PermissionRequest.hooks | Where-Object {$_.command -like '*codex-ntfy-notify.ps1*'})
-    Assert-Event ($owned.Count -eq 1 -and $owned[0].command -like '*-Event approval') '安装器登记真正的授权请求事件'
+    Assert-Event (@($hooks.hooks.PermissionRequest.hooks | Where-Object {$_.command -like '*codex-ntfy-notify.ps1*'}).Count -eq 0) '全新安装不登记授权钩子'
+    # 模拟从 0.5.0 升级；同一组中保留其他插件的审批处理器。
     $foreign=[pscustomobject]@{type='command';command='other-permission-hook'}
-    $hooks.hooks.PermissionRequest[0].hooks+=@($foreign);Write-NotifierJson (Join-Path $directory 'hooks.json') $hooks
+    $legacy=[pscustomobject]@{type='command';command=('powershell.exe -File "'+(Join-Path $directory 'scripts/codex-ntfy-notify.ps1')+'" -Event approval')}
+    Set-NotifierProperty $hooks.hooks 'PermissionRequest' @([pscustomobject]@{hooks=@($legacy,$foreign)})
+    $hooks.hooks.PreToolUse+=@([pscustomobject]@{matcher='(^|[._])request_permissions$';hooks=@($legacy,$foreign)})
+    Write-NotifierJson (Join-Path $directory 'hooks.json') $hooks
     & (Join-Path $repository 'install.ps1') -CodexHome $directory *> $null
-    & (Join-Path $repository 'install.ps1') -CodexHome $directory *> $null
+    & (Join-Path $repository 'install.ps1') -CodexHome $directory -NoApprovalReminder *> $null
     $hooks=Read-NotifierJson (Join-Path $directory 'hooks.json')
-    Assert-Event (@($hooks.hooks.PermissionRequest.hooks | Where-Object {$_.command -like '*codex-ntfy-notify.ps1*'}).Count -eq 1) '重复升级不重复增加授权钩子'
-    Assert-Event (@($hooks.hooks.PermissionRequest.hooks | Where-Object {$_.command -eq $foreign.command}).Count -eq 1) '升级保留其他授权钩子'
+    Assert-Event (@($hooks.hooks.PermissionRequest.hooks | Where-Object {$_.command -like '*codex-ntfy-notify.ps1*'}).Count -eq 0) '升级移除旧版 PermissionRequest 通知钩子'
+    Assert-Event (@($hooks.hooks.PreToolUse.hooks | Where-Object {$_.command -like '*-Event approval'}).Count -eq 0) '升级移除旧版权限申请通知钩子'
+    Assert-Event (@($hooks.hooks.PermissionRequest.hooks | Where-Object {$_.command -eq $foreign.command}).Count -eq 1) '升级保留其他插件的 PermissionRequest 钩子'
+    Assert-Event (@($hooks.hooks.PreToolUse.hooks | Where-Object {$_.command -eq $foreign.command}).Count -eq 1) '升级保留其他插件的权限申请钩子'
     & (Join-Path $repository 'uninstall.ps1') -CodexHome $directory -KeepConfig *> $null
     $hooks=Read-NotifierJson (Join-Path $directory 'hooks.json')
     Assert-Event (-not [IO.File]::Exists($statePath) -and [IO.File]::Exists($config)) '卸载保留配置时仍清理去重缓存'
