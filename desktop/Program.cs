@@ -13,8 +13,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("Codex 手机提醒")]
 [assembly: AssemblyDescription("ntfy 与微信 ClawBot 的 Windows 图形配置工具")]
-[assembly: AssemblyVersion("0.5.1.0")]
-[assembly: AssemblyFileVersion("0.5.1.0")]
+[assembly: AssemblyVersion("0.6.0.0")]
+[assembly: AssemblyFileVersion("0.6.0.0")]
 
 namespace CodexPhoneNotifier
 {
@@ -38,9 +38,9 @@ namespace CodexPhoneNotifier
             using (SHA256 sha = SHA256.Create())
             using (FileStream file = File.OpenRead(location))
                 hash = BitConverter.ToString(sha.ComputeHash(file)).Replace("-", "").Substring(0, 12);
-            PayloadDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CodexPhoneNotifier", "0.5.1-" + hash);
+            PayloadDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CodexPhoneNotifier", "0.6.0-" + hash);
             Directory.CreateDirectory(PayloadDirectory);
-            string[] files = { "install.ps1", "uninstall.ps1", "review-hooks.ps1", "scripts/common.ps1", "scripts/notify.ps1", "desktop/desktop-backend.ps1", "desktop/assets/LUCIDE-LICENSE.txt", "desktop/assets/ICON-NOTICE.txt", "desktop/assets/LOBE-ICONS-LICENSE.txt", "LICENSE" };
+            string[] files = { "install.ps1", "uninstall.ps1", "review-hooks.ps1", "scripts/common.ps1", "scripts/notify.ps1", "scripts/mcp-consent.ps1", "desktop/McpConsentProxy.cs", "desktop/desktop-backend.ps1", "desktop/assets/LUCIDE-LICENSE.txt", "desktop/assets/ICON-NOTICE.txt", "desktop/assets/LOBE-ICONS-LICENSE.txt", "LICENSE" };
             foreach (string relative in files)
             {
                 string target = Path.Combine(PayloadDirectory, relative.Replace('/', Path.DirectorySeparatorChar));
@@ -193,8 +193,8 @@ namespace CodexPhoneNotifier
             Controls.Add(root);
             Panel heading = new Panel { Dock = DockStyle.Fill };
             heading.Controls.Add(new Label { Text = "Codex 手机提醒", Font = new Font(Font.FontFamily, 20, FontStyle.Bold), AutoSize = true, Location = new Point(0, 0), ForeColor = ink });
-            heading.Controls.Add(new Label { Text = "任务结束或等你回答时，让手机提醒你。", AutoSize = true, Location = new Point(2, 41), ForeColor = Color.FromArgb(94, 109, 132) });
-            Label version = new Label { Text = "v0.5.1", AutoSize = true, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(834, 10), ForeColor = Color.FromArgb(94, 109, 132) };
+            heading.Controls.Add(new Label { Text = "任务结束、等待回答或应用授权时，让手机提醒你。", AutoSize = true, Location = new Point(2, 41), ForeColor = Color.FromArgb(94, 109, 132) });
+            Label version = new Label { Text = "v0.6.0", AutoSize = true, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(834, 10), ForeColor = Color.FromArgb(94, 109, 132) };
             heading.Controls.Add(version); root.Controls.Add(heading, 0, 0);
             summary = new Label { Text = "正在读取本机设置…", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, ForeColor = blue };
             root.Controls.Add(summary, 0, 1);

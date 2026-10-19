@@ -28,6 +28,12 @@ jobs:
       - name: Verify real hook stdin and UTF-8
         shell: powershell
         run: .\tests\run-hook-stdin.ps1
+      - name: Verify native MCP consent relay and restoration (Windows PowerShell)
+        shell: powershell
+        run: .\tests\run-consent.ps1
+      - name: Verify native MCP consent relay and restoration (PowerShell 7)
+        shell: pwsh
+        run: .\tests\run-consent.ps1
       - name: Build Windows desktop app
         shell: powershell
         run: .\build-desktop.ps1

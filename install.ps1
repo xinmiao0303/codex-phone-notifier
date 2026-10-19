@@ -5,7 +5,7 @@ param(
     [string]$Server = 'https://ntfy.sh',
     [string]$CodexHome = '',
     [switch]$NoInputReminder,
-    # 兼容旧命令；本版本始终关闭授权提醒。
+    # 兼容旧命令；指定时也不安装原生插件授权提醒。
     [switch]$NoApprovalReminder,
     [switch]$NoStartupHook,
     [switch]$ForceConfig,
@@ -13,6 +13,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'scripts\common.ps1')
+. (Join-Path $PSScriptRoot 'scripts\mcp-consent.ps1')
 $directory = Resolve-NotifierDirectory $CodexHome
 $configFile = Join-Path $directory 'ntfy-codex.json'
 $hooksFile = Join-Path $directory 'hooks.json'
@@ -61,6 +62,8 @@ try {
     if ($writeConfig) { Write-NotifierJson $configFile $settings }
     # 最后才登记钩子，避免指向尚未安装的脚本。
     Write-NotifierJson $hooksFile $document
+    if ($NoApprovalReminder) { Disable-ConsentProxy $directory }
+    else { Enable-ConsentProxy $directory (Join-Path $PSScriptRoot 'desktop/McpConsentProxy.cs') | Out-Null }
 } catch {
     foreach ($path in $paths) {
         if ($originalFiles -contains $path) {

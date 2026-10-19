@@ -1,6 +1,6 @@
 # Codex 手机提醒
 
-**Codex 做完这一轮任务，或者正在等你选择、回答时，让手机提醒你。**
+**Codex 做完这一轮任务，或者正在等你选择、回答或允许访问应用时，让手机提醒你。**
 
 适合在 Windows 电脑上使用 Codex 的人。你可以离开电脑去做其他事情，收到提醒后再回来继续。这个工具负责通知，不会替你回答问题或批准操作。
 
@@ -36,6 +36,7 @@
 | --- | --- | --- |
 | Codex 完成这一轮回复 | Codex 任务已完成 | 回来查看结果 |
 | Codex 弹出选择题或纯文字输入框 | Codex 等待你回答 | 回来选择或输入答案 |
+| 插件弹出原生应用访问确认框，仍在等待答复 | Codex 等待你授权 | 回来检查并选择是否允许 |
 | 你主动发送测试 | Codex 通知测试 | 检查接收是否正常 |
 
 标题和正文默认使用中文。正文只有提醒、电脑名称和时间，不包含聊天内容、代码或问题正文。时间示例：`2026-10-11    08:30:00`，日期和时刻之间四个空格，不显示 `+08:00`。
@@ -44,7 +45,9 @@
 
 选择题和纯文字输入框都能提醒；如果只是回复正文里写了一句问话、没有调用提问工具，则不会产生独立的等待输入事件。
 
-**0.5.1 起不发送任何授权提醒。** 自动审批中的请求不需要你回来处理；权限事件发生在审批之前，无法可靠确认最后是否弹出“是否允许访问”；Computer Use 还有单独的应用授权流程。因此不根据权限请求或工具名字猜测是否需要你操作。任务完成与等待回答提醒照常。参见 [hooks 事件说明](https://learn.chatgpt.com/docs/hooks)和 [自动审批与 Computer Use 的区别](https://learn.chatgpt.com/docs/sandboxing/auto-review)。
+**0.6.0 使用独立的原生授权连接。** 安装时为已配置的 Computer Use / `node_repl` 加入一个本机 MCP 转发程序。插件发出原生交互请求后，等待一秒仍未答复才发提醒；快速自动答复、已经选择、取消调用或退出时会停止尚未发出的提醒。同一请求只发一次。它原样传递插件请求和用户答复，不代替你允许或拒绝，也不记录弹窗正文。
+
+普通 `PermissionRequest`、命令提权及网络自动审批继续不提醒。当前只接入本地 `node_repl` 的 MCP 原生交互，不覆盖 Windows UAC、系统权限窗口或其他无关软件的弹窗。原生连接需要完整重启 Codex 后加载；实际手机送达还需按下文测试。
 
 会话记录格式属于 Codex 内部实现，可能随版本变化；遇到无法识别或不能确认结束的记录时，脚本会跳过完成提醒并记录原因，不会猜测任务已经完成。
 
@@ -117,7 +120,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\review-hooks.ps1
 1. 让 Codex 完成一个简短任务，回复结束后检查 **Codex 任务已完成**。
 2. 让 Codex **弹出一道选择题，并先停留在提问阶段**，问题出现时检查 **Codex 等待你回答**。
 
-3. 自动审批或任何权限申请都不应收到“等待你授权”。
+3. 让 Computer Use 请求访问一个尚未允许的应用。原生“允许 ChatGPT 使用某应用？”弹窗停留超过一秒时，检查手机是否收到一条 **Codex 等待你授权**。普通自动审批不应触发这条通知。
 
 手动发送测试成功，只说明通知通道可用；还需要用真实任务和问题框验证自动触发。已经审查过并重启的用户，仅切换通知通道或修改标题时，无需重新装钩子或重启。
 
@@ -165,10 +168,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\send-test.ps1 -Channel
 
 [config.example.json](config.example.json) 只是可公开的示例，不是任何人的真实配置。具体设置与限制分别见 [ntfy 教程](docs/ntfy.md)和[微信教程](docs/wechat.md)。
 
-只要完成提醒、不需要等待回答提醒：
+只要完成提醒、不需要等待回答和应用授权提醒：
 
 ~~~powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -NoInputReminder
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -NoInputReminder -NoApprovalReminder
 ~~~
 
 修改钩子后完整重启 Codex。它不会移除其他工具的提问前钩子。
@@ -206,7 +209,8 @@ Get-Content "$HOME\.codex\ntfy-codex.log" -Tail 20
 | queued/事件/wechat | 微信 | PushPlus 接受了请求，还不代表手机或手环收到 |
 | input-hook-start | 共用钩子 | 问题框触发了输入提醒 |
 | skip/done | 共用钩子 | 后台会话、尚未结束或无法确认，不发送完成提醒 |
-| skip/approval: disabled | 共用钩子 | 当前进程仍调用旧授权钩子，已静默跳过 |
+| skip/approval: disabled | 共用钩子 | 旧普通审批钩子已静默跳过 |
+| queued/consent/wechat、sent/consent | 原生应用授权 | 等待答复的 MCP 交互已提交到对应通知服务 |
 | skip/事件/通道: duplicate-or-busy | 对应通道 | 同一事件已发送或正在发送，跳过重复 |
 | error/事件/通道 | 对应通道 | 发送失败、限速或暂停 |
 
@@ -231,6 +235,8 @@ Get-Content "$HOME\.codex\ntfy-codex.log" -Tail 20
 | tests/run.ps1 | 隔离检查，不向真实手机发消息 |
 | tests/run-hook-events.ps1 | 主会话结束、后台误报、并发去重及移除授权提醒的回归检查 |
 | tests/run-hook-stdin.ps1 | Windows PowerShell 真实标准输入、中文、表情及 BOM 检查 |
+| desktop/McpConsentProxy.cs / scripts/mcp-consent.ps1 | 原生授权的 MCP 转发、自动安装和恢复原启动器 |
+| tests/run-consent.ps1 | MCP 消息保真、答复取消、重复事件、安装升级和卸载恢复检查 |
 
 ~~~powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\run.ps1
@@ -238,9 +244,10 @@ pwsh.exe -NoProfile -File .\tests\run.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\run-hook-events.ps1
 pwsh.exe -NoProfile -File .\tests\run-hook-events.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\run-hook-stdin.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\run-consent.ps1
 ~~~
 
-测试无需第三方框架，使用临时目录、测试密钥和模拟 HTTP，不读取真实订阅、不修改真正的 .codex。Windows PowerShell 5.1 与 PowerShell 7.6 均通过基础配置 52 项、事件回归 47 项和真实标准输入 10 项检查；GitHub Actions 执行同一套检查。
+测试无需第三方框架，使用临时目录、测试密钥和模拟 HTTP，不读取真实订阅、不修改真正的 .codex。Windows PowerShell 5.1 与 PowerShell 7.6 均通过基础配置 52 项、事件回归 50 项和真实标准输入 10 项检查；GitHub Actions 执行同一套检查。
 
 图形界面后端另通过 19 项隔离检查，真实 EXE 通过 7 项集成检查，覆盖安装、加密、渠道开关、全部暂停和卸载。图形界面已渲染检查。
 

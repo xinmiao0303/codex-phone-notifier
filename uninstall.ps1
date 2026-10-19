@@ -3,6 +3,7 @@
 param([string]$CodexHome = '', [switch]$KeepConfig)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'scripts\common.ps1')
+. (Join-Path $PSScriptRoot 'scripts\mcp-consent.ps1')
 $directory = Resolve-NotifierDirectory $CodexHome
 $hooksFile = Join-Path $directory 'hooks.json'
 $configFile = Join-Path $directory 'ntfy-codex.json'
@@ -16,6 +17,7 @@ $hooks = $document.PSObject.Properties['hooks']
 if ($null -ne $hooks -and $null -ne $hooks.Value) { Remove-NotifierHandlers $hooks.Value $targetScript }
 # 只备份和移除明确的文件；不删除整个 .codex 目录。
 $backup = Backup-NotifierFiles $directory @($hooksFile, $configFile, $targetScript, $tokenFile, $stateFile, $eventStateFile)
+Disable-ConsentProxy $directory
 if ($hasHooksFile) { Write-NotifierJson $hooksFile $document }
 if ([IO.File]::Exists($targetScript)) { Remove-Item -LiteralPath $targetScript -Force }
 if ([IO.File]::Exists($eventStateFile)) { Remove-Item -LiteralPath $eventStateFile -Force }
@@ -25,6 +27,6 @@ if (-not $KeepConfig) {
     }
 }
 Write-Host '本工具的完成、等待输入、等待授权、启动钩子已移除。'
-Write-Host '其他钩子、config.toml、聊天记录和备份不会删除。'
+Write-Host '保留其他钩子、聊天记录和备份；仅恢复本工具改过的 node_repl 启动器。'
 Write-Host '请完整退出并重新打开 Codex。'
 Write-Host ('原文件备份：' + $backup)

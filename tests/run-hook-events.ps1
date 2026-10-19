@@ -110,6 +110,15 @@ try {
     Add-Member -InputObject $inputObject -NotePropertyName hook_event_name -NotePropertyValue 'PermissionRequest'
     & $notify -Event input -ConfigPath $config -HookInput $inputObject *> $null
     Assert-Event ($global:EventRequests.Count -eq $before) '权限事件误标为 input 时仍不发送'
+    $before=$global:EventRequests.Count
+    $consentId=('c'*64)
+    & $notify -Event consent -ConsentId $consentId -ConfigPath $config *> $null
+    & $notify -Event consent -ConsentId $consentId -ConfigPath $config *> $null
+    Assert-Event ($global:EventRequests.Count -eq $before+1 -and $global:EventRequests[-1].payload.title -eq 'Codex 等待你授权') '原生 MCP 授权事件发送一次，普通审批事件继续静默'
+    & $notify -Event consent -ConsentId 'not-a-request-id' -ConfigPath $config *> $null
+    & $notify -Event consent -ConfigPath $config *> $null
+    Assert-Event ($global:EventRequests.Count -eq $before+1) '缺少真实请求摘要时不猜测有授权窗口'
+    Assert-Event (($global:EventRequests[-1].payload|ConvertTo-Json -Depth 10) -notmatch 'TEST_PRIVATE_ARGUMENT|requestedSchema|PRIVATE_REQUEST') '原生授权手机消息不包含插件请求正文'
     $statePath=Join-Path $directory 'notifier-event-state.json'
     Assert-Event ([IO.File]::ReadAllText($statePath) -notmatch 'TEST_PRIVATE_ARGUMENT|questions|mcp__computer_use') '去重文件只保存摘要，不保存参数和会话正文'
     Assert-Event (@((Read-NotifierJson (Join-Path $directory 'hooks.json')).hooks.Stop.hooks | Where-Object { $_.async -eq $true }).Count -eq 1) '完成钩子后台运行，可以观察真正的轮次结束'

@@ -18,3 +18,5 @@ dist/
 *.pdb
 
 notifier-event-state.json
+
+mcp-consent-proxy.json

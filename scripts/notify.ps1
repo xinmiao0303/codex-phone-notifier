@@ -1,13 +1,14 @@
 ﻿#requires -Version 5.1
 [CmdletBinding()]
 param(
-    [ValidateSet('done', 'input', 'approval', 'test', 'startup')]
+    [ValidateSet('done', 'input', 'approval', 'consent', 'test', 'startup')]
     [string]$Event = 'done',
     [string]$ConfigPath = '',
     [ValidateSet('all', 'ntfy', 'wechat')]
     [string]$Channel = 'all',
     [switch]$Strict,
-    [object]$HookInput = $null
+    [object]$HookInput = $null,
+    [string]$ConsentId = ''
 )
 $ErrorActionPreference = 'Stop'
 [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
@@ -172,7 +173,11 @@ function Set-EventReservation {
 # 兼容 Codex 当前进程缓存的 0.5.0 授权钩子：静默返回，不发送也不作审批决定。
 if ($Event -eq 'approval') { Write-DeliveryLog 'skip/approval: disabled'; return }
 $eventKey=''; $eventOwner=[guid]::NewGuid().ToString('N')
-if ($Event -notin @('startup','test')) {
+if ($Event -eq 'consent') {
+    if ($ConsentId -notmatch '^[a-f0-9]{64}$') { Write-DeliveryLog 'skip/consent: missing-request-id'; return }
+    $eventKey=Get-NotifierDigest ('mcp-consent|'+$ConsentId)
+}
+if ($Event -notin @('startup','test','consent')) {
     if ($null -eq $HookInput -and [Console]::IsInputRedirected) {
         $raw=[Console]::In.ReadToEnd()
         if (-not [string]::IsNullOrWhiteSpace($raw)) {
@@ -224,6 +229,11 @@ try {
             $title = Read-TextOption $settings 'inputTitle' 'Codex 等待你回答'
             $summary = 'Codex 正在等待你选择或回答，请返回电脑处理。'
             $tags = Read-TextOption $settings 'inputTags' 'computer,question'
+        }
+        'consent' {
+            $title = Read-TextOption $settings 'consentTitle' 'Codex 等待你授权'
+            $summary = 'Codex 已请求你确认插件或应用的访问权限，请返回电脑查看授权窗口。'
+            $tags = 'computer,lock'
         }
         'test' {
             $title = Read-TextOption $settings 'testTitle' 'Codex 通知测试'

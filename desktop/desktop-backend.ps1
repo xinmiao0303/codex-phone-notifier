@@ -54,7 +54,7 @@ function Save-DesktopSettings {
     }
     [IO.Directory]::CreateDirectory($directory) | Out-Null
     $paths = @($configPath, $senderPath, $tokenPath, $statePath)
-    if ($Install) { $paths += $hooksPath }
+    if ($Install) { $paths += @($hooksPath,(Join-Path $directory 'config.toml'),(Join-Path $directory 'mcp-consent-proxy.json')) }
     $existing = @($paths | Where-Object { [IO.File]::Exists($_) })
     $backup = Backup-NotifierFiles $directory $paths
     try {
@@ -100,14 +100,14 @@ try {
     switch ([string]$request.action) {
         'status' { }
         'save' { Save-DesktopSettings; $message = '设置已保存，下次自动提醒即生效。' }
-        'install' { Save-DesktopSettings -Install; $message = '安装完成。首次安装后，请在 Codex 审查钩子并完整重启。'; $restartRequired = $true }
+        'install' { Save-DesktopSettings -Install; $message = '安装完成。请完整重启 Codex 以加载插件授权提醒连接；首次安装还需审查通知钩子。'; $restartRequired = $true }
         'test' {
             if ([string]$request.channel -notin @('ntfy','wechat')) { throw '[用户提示]请选择要测试的通知渠道。' }
             Assert-DesktopInput
             if (($request.channel -eq 'ntfy' -and -not [bool]$desired.ntfyEnabled) -or ($request.channel -eq 'wechat' -and -not [bool]$desired.wechatEnabled)) { throw '[用户提示]请先打开这个渠道的开关，再发送测试。' }
             Save-DesktopSettings
             & $senderPath -Event test -Channel ([string]$request.channel) -ConfigPath $configPath -Strict *> $null
-            if ($request.channel -eq 'wechat') { $message = '微信聊天测试请求已提交。请锁屏后检查手机和手环是否收到；接口接受请求不等于送达。' }
+            if ($request.channel -eq 'wechat') { $message = '微信聊天测试请求已提交。请锁屏后检查手机是否收到；接口接受请求不等于送达。' }
             else { $message = 'ntfy 测试已发布。请检查订阅该主题的 ntfy App。' }
         }
         { $_ -in @('remove-ntfy','remove-wechat') } {

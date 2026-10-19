@@ -1,5 +1,5 @@
 ﻿#requires -Version 5.1
-# 安装和卸载共用的文件处理；不会读取或修改 config.toml。
+# 安装和卸载共用的文件处理；原生 MCP 连接由 mcp-consent.ps1 单独管理。
 function Resolve-NotifierDirectory {
     param([string]$Directory)
     if ([string]::IsNullOrWhiteSpace($Directory)) { $Directory = $env:CODEX_HOME }
