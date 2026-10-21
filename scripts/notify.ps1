@@ -8,9 +8,21 @@ param(
     [string]$Channel = 'all',
     [switch]$Strict,
     [object]$HookInput = $null,
-    [string]$ConsentId = ''
+    [string]$ConsentId = '',
+    # 图形界面用：按当前配置发一条带“预览”前缀的消息；或只列出默认标题与正文。
+    [switch]$Preview,
+    [switch]$ListContent
 )
 $ErrorActionPreference = 'Stop'
+# 每类提醒的默认标题与正文。配置里的同名键覆盖它们；正文中的占位符发送时替换。
+$templates = [ordered]@{
+    done = [ordered]@{ label='任务完成'; hint='Codex 完成这一轮回复时发送。'; titleKey='title'; bodyKey='body'; title='Codex 任务已完成'; body="Codex 已完成这一轮任务，你可以回来查看结果。`n电脑：{电脑}`n时间：{时间}"; placeholders=@('电脑','时间','项目'); legacy=@() }
+    input = [ordered]@{ label='等待回答'; hint='Codex 弹出选择题或纯文字输入框时发送。'; titleKey='inputTitle'; bodyKey='inputBody'; title='Codex 等待你回答'; body="Codex 正在等待你选择或回答，请返回电脑处理。`n电脑：{电脑}`n时间：{时间}"; placeholders=@('电脑','时间','项目'); legacy=@() }
+    consent = [ordered]@{ label='插件授权'; hint='插件请求应用访问授权、超过一秒仍未答复时发送。'; titleKey='consentTitle'; bodyKey='consentBody'; title='Codex 等待你授权'; body="Codex 已请求你确认插件或应用的访问权限，请返回电脑查看授权窗口。`n电脑：{电脑}`n时间：{时间}"; placeholders=@('电脑','时间'); legacy=@() }
+    # 测试只验证渠道，Codex 与 Claude Code 共用；旧版默认标题按新默认处理。
+    test = [ordered]@{ label='通知测试'; hint='点击测试按钮时发送，Codex 与 Claude Code 共用。'; titleKey='testTitle'; bodyKey='testBody'; title='手机提醒测试'; body="这是一条测试通知。收到它，说明电脑到手机的发送通道可用。`n电脑：{电脑}`n时间：{时间}"; placeholders=@('电脑','时间'); legacy=@('Codex 通知测试','Claude Code 通知测试') }
+}
+if ($ListContent) { return $templates }
 [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
 # 安装后独立运行；不依赖仓库中的其他文件。
 $notifierDirectory = $env:CODEX_HOME
@@ -25,6 +37,19 @@ function Write-DeliveryLog {
         $line = '[{0}] {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss zzz'), $Text
         Add-Content -LiteralPath $logFile -Value $line -Encoding UTF8
     } catch { }
+}
+function Format-NotifierText {
+    param([string]$Template, [hashtable]$Values, [switch]$Title)
+    # 替换占位符；正文里某一行的占位符全部为空时整行省略。标题只替换，不省略。
+    $pattern = '\{(电脑|时间|项目|原因|后台)\}'
+    $lines = @()
+    foreach ($line in ($Template -replace "`r`n", "`n").Split("`n")) {
+        $found = @([regex]::Matches($line, $pattern) | ForEach-Object { $_.Groups[1].Value })
+        if (-not $Title -and $found.Count -gt 0 -and @($found | Where-Object { $Values[$_] }).Count -eq 0) { continue }
+        $lines += [regex]::Replace($line, $pattern, { param($match) [string]$Values[$match.Groups[1].Value] })
+    }
+    if ($Title) { return ($lines -join ' ').Trim() }
+    return ($lines -join [Environment]::NewLine).Trim()
 }
 function Read-TextOption {
     param([object]$Settings, [string]$Key, [string]$Fallback)
@@ -173,17 +198,17 @@ function Set-EventReservation {
 # 兼容 Codex 当前进程缓存的 0.5.0 授权钩子：静默返回，不发送也不作审批决定。
 if ($Event -eq 'approval') { Write-DeliveryLog 'skip/approval: disabled'; return }
 # 图形界面关闭 Codex 提醒时保留钩子，这里静默返回，不用重新信任钩子或重启；手动测试不受影响。
-if ($Event -ne 'test') {
+if ($Event -ne 'test' -and -not $Preview) {
     $switches=$null
     try { $switches=[IO.File]::ReadAllText($ConfigPath) | ConvertFrom-Json } catch { }
     if ($null -ne $switches -and $null -ne $switches.PSObject.Properties['enabled'] -and $switches.enabled -eq $false) { Write-DeliveryLog ('skip/{0}: reminders-off' -f $Event); return }
 }
 $eventKey=''; $eventOwner=[guid]::NewGuid().ToString('N')
-if ($Event -eq 'consent') {
+if ($Event -eq 'consent' -and -not $Preview) {
     if ($ConsentId -notmatch '^[a-f0-9]{64}$') { Write-DeliveryLog 'skip/consent: missing-request-id'; return }
     $eventKey=Get-NotifierDigest ('mcp-consent|'+$ConsentId)
 }
-if ($Event -notin @('startup','test','consent')) {
+if ($Event -notin @('startup','test','consent') -and -not $Preview) {
     if ($null -eq $HookInput -and [Console]::IsInputRedirected) {
         $raw=[Console]::In.ReadToEnd()
         if (-not [string]::IsNullOrWhiteSpace($raw)) {
@@ -226,30 +251,28 @@ try {
     }
     if (@($channels | Where-Object { $_ -notin @('ntfy', 'wechat') }).Count -gt 0) { throw 'Invalid notification channels' }
     switch ($Event) {
-        'done' {
-            $title = Read-TextOption $settings 'title' 'Codex 任务已完成'
-            $summary = 'Codex 已完成这一轮任务，你可以回来查看结果。'
-            $tags = Read-TextOption $settings 'tags' 'computer,white_check_mark'
-        }
-        'input' {
-            $title = Read-TextOption $settings 'inputTitle' 'Codex 等待你回答'
-            $summary = 'Codex 正在等待你选择或回答，请返回电脑处理。'
-            $tags = Read-TextOption $settings 'inputTags' 'computer,question'
-        }
-        'consent' {
-            $title = Read-TextOption $settings 'consentTitle' 'Codex 等待你授权'
-            $summary = 'Codex 已请求你确认插件或应用的访问权限，请返回电脑查看授权窗口。'
-            $tags = 'computer,lock'
-        }
-        'test' {
-            $title = Read-TextOption $settings 'testTitle' 'Codex 通知测试'
-            $summary = '这是一条测试通知。收到它，说明电脑到手机的发送通道可用。'
-            $tags = 'computer,test_tube'
-        }
+        'done' { $tags = Read-TextOption $settings 'tags' 'computer,white_check_mark' }
+        'input' { $tags = Read-TextOption $settings 'inputTags' 'computer,question' }
+        'consent' { $tags = 'computer,lock' }
+        'test' { $tags = 'computer,test_tube' }
     }
+    $template = $templates[$Event]
+    $title = Read-TextOption $settings $template.titleKey ''
+    if ($title -in $template.legacy) { $title = '' }
+    if (-not $title) { $title = $template.title }
+    $body = Read-TextOption $settings $template.bodyKey $template.body
     $computer = $env:COMPUTERNAME
     if ([string]::IsNullOrWhiteSpace($computer)) { $computer = '这台电脑' }
-    $message = @($summary, ('电脑：' + $computer), ('时间：' + (Get-Date -Format 'yyyy-MM-dd    HH:mm:ss'))) -join [Environment]::NewLine
+    $project = ''
+    if ($null -ne $HookInput -and $HookInput.cwd) { $project = [IO.Path]::GetFileName(([string]$HookInput.cwd).TrimEnd('\', '/')) }
+    if ($Preview) { $project = '示例项目' }
+    $values = @{ '电脑'=$computer; '时间'=(Get-Date -Format 'yyyy-MM-dd    HH:mm:ss'); '项目'=$project; '原因'=''; '后台'='' }
+    # 自定义内容替换后为空时退回默认，避免发出空白通知。
+    $title = Format-NotifierText $title $values -Title
+    if (-not $title) { $title = Format-NotifierText $template.title $values -Title }
+    $message = Format-NotifierText $body $values
+    if (-not $message) { $message = Format-NotifierText $template.body $values }
+    if ($Preview) { $title = '预览 · ' + $title }
 } catch {
     Write-DeliveryLog ('error/{0}: {1}' -f $Event, $_.Exception.GetType().Name)
     if ($Strict) { throw ('通知配置无法读取，请检查：' + $ConfigPath) }

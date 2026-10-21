@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -7,14 +8,15 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
 
 [assembly: AssemblyTitle("Codex 与 Claude Code 手机提醒")]
 [assembly: AssemblyDescription("Codex 与 Claude Code 的 ntfy、微信 ClawBot 手机提醒配置工具")]
-[assembly: AssemblyVersion("0.7.0.0")]
-[assembly: AssemblyFileVersion("0.7.0.0")]
+[assembly: AssemblyVersion("0.8.0.0")]
+[assembly: AssemblyFileVersion("0.8.0.0")]
 
 namespace CodexPhoneNotifier
 {
@@ -26,6 +28,62 @@ namespace CodexPhoneNotifier
         { object item; return value != null && value.TryGetValue(key, out item) && item != null && Convert.ToBoolean(item); }
         public static Dictionary<string, object> Object(IDictionary<string, object> value, string key)
         { object item; return value != null && value.TryGetValue(key, out item) ? item as Dictionary<string, object> : null; }
+        public static IList List(IDictionary<string, object> value, string key)
+        {
+            object item;
+            if (value == null || !value.TryGetValue(key, out item) || item == null) return new ArrayList();
+            // PowerShell 把只有一项的数组写成单个对象，这里统一成列表。
+            return item as IList ?? new ArrayList { item };
+        }
+    }
+
+    // 一条可编辑的提醒：默认值来自发送脚本，界面只保存与默认不同的内容。
+    internal sealed class ContentItem
+    {
+        public string Tool, Event, Label, Hint, TitleKey, BodyKey, DefaultTitle, DefaultBody, Title, Body;
+        public readonly List<string> Placeholders = new List<string>();
+        public string Display { get { return (Tool == "shared" ? "通用" : Tool == "codex" ? "Codex" : "Claude Code") + " · " + Label; } }
+        public override string ToString() { return Display; }
+        public static ContentItem From(string tool, Dictionary<string, object> data)
+        {
+            ContentItem item = new ContentItem { Tool = tool, Event = JsonValue.Text(data, "event"), Label = JsonValue.Text(data, "label"), Hint = JsonValue.Text(data, "hint"), TitleKey = JsonValue.Text(data, "titleKey"), BodyKey = JsonValue.Text(data, "bodyKey"), DefaultTitle = JsonValue.Text(data, "defaultTitle"), DefaultBody = ContentText.Lines(JsonValue.Text(data, "defaultBody")) };
+            string title = JsonValue.Text(data, "title"), body = JsonValue.Text(data, "body");
+            item.Title = String.IsNullOrWhiteSpace(title) ? item.DefaultTitle : title;
+            item.Body = String.IsNullOrWhiteSpace(body) ? item.DefaultBody : ContentText.Lines(body);
+            foreach (object name in JsonValue.List(data, "placeholders")) item.Placeholders.Add(Convert.ToString(name));
+            return item;
+        }
+    }
+
+    internal static class ContentText
+    {
+        private static readonly Regex Placeholder = new Regex(@"\{(电脑|时间|项目|原因|后台)\}");
+        public static string Lines(string text) { return (text ?? "").Replace("\r\n", "\n").Replace("\n", "\r\n"); }
+        public static bool Same(string a, string b) { return (a ?? "").Replace("\r\n", "\n").Trim() == (b ?? "").Replace("\r\n", "\n").Trim(); }
+        public static Dictionary<string, string> SampleValues(string computer)
+        {
+            if (String.IsNullOrWhiteSpace(computer)) computer = Environment.GetEnvironmentVariable("COMPUTERNAME");
+            if (String.IsNullOrWhiteSpace(computer)) computer = "这台电脑";
+            // 与发送脚本的 -Preview 使用同一组示例值。
+            return new Dictionary<string, string> { { "电脑", computer }, { "时间", DateTime.Now.ToString("yyyy-MM-dd    HH:mm:ss") }, { "项目", "示例项目" }, { "原因", "达到速率或用量限制" }, { "后台", "后台还有 1 个任务在运行。" } };
+        }
+        // 与发送脚本的 Format-NotifierText 规则一致：正文里占位符全为空的行整行省略。
+        public static string Render(string template, Dictionary<string, string> values, bool title)
+        {
+            List<string> lines = new List<string>();
+            foreach (string line in (template ?? "").Replace("\r\n", "\n").Split('\n'))
+            {
+                MatchCollection found = Placeholder.Matches(line);
+                if (!title && found.Count > 0)
+                {
+                    bool any = false;
+                    foreach (Match match in found) { string value; if (values.TryGetValue(match.Groups[1].Value, out value) && !String.IsNullOrEmpty(value)) any = true; }
+                    if (!any) continue;
+                }
+                lines.Add(Placeholder.Replace(line, delegate(Match match) { string value; return values.TryGetValue(match.Groups[1].Value, out value) ? value : ""; }));
+            }
+            return title ? String.Join(" ", lines).Trim() : String.Join("\r\n", lines).Trim();
+        }
     }
 
     internal sealed class DesktopBackend
@@ -38,7 +96,7 @@ namespace CodexPhoneNotifier
             using (SHA256 sha = SHA256.Create())
             using (FileStream file = File.OpenRead(location))
                 hash = BitConverter.ToString(sha.ComputeHash(file)).Replace("-", "").Substring(0, 12);
-            PayloadDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CodexPhoneNotifier", "0.7.0-" + hash);
+            PayloadDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CodexPhoneNotifier", "0.8.0-" + hash);
             Directory.CreateDirectory(PayloadDirectory);
             string[] files = { "install.ps1", "uninstall.ps1", "review-hooks.ps1", "scripts/common.ps1", "scripts/notify.ps1", "scripts/mcp-consent.ps1", "scripts/claude-common.ps1", "scripts/claude-notify.ps1", "claude-code/install.ps1", "claude-code/uninstall.ps1", "desktop/McpConsentProxy.cs", "desktop/desktop-backend.ps1", "desktop/assets/LUCIDE-LICENSE.txt", "desktop/assets/ICON-NOTICE.txt", "desktop/assets/LOBE-ICONS-LICENSE.txt", "LICENSE" };
             foreach (string relative in files)
@@ -110,8 +168,18 @@ namespace CodexPhoneNotifier
         private Label summary, tokenStatus, codexStatus, claudeStatus;
         private Button save, install, refresh, testNtfy, testWechat, removeNtfy, removeWechat, uninstall;
         private readonly List<Control> operationControls = new List<Control>();
+        private readonly List<ContentItem> contentItems = new List<ContentItem>();
+        private TabControl tabs;
+        private TabPage contentPage;
+        private ListBox contentList;
+        private TextBox contentTitle, contentBody, contentPreview;
+        private Label contentHeading, contentHint, contentPlaceholders;
+        private Button contentReset, contentSend;
+        private bool contentLoading;
+        private string previewTool = "", previewEvent = "";
         private readonly Color ink = Color.FromArgb(32, 42, 62), blue = Color.FromArgb(41, 94, 218), muted = Color.FromArgb(94, 109, 132), good = Color.FromArgb(30, 123, 93), warn = Color.FromArgb(151, 90, 24), danger = Color.FromArgb(169, 48, 57);
-        public MainForm(DesktopBackend service, bool isPreview)
+        public MainForm(DesktopBackend service, bool isPreview) : this(service, isPreview, "") { }
+        public MainForm(DesktopBackend service, bool isPreview, string previewPage)
         {
             backend = service; preview = isPreview;
             directory = Environment.GetEnvironmentVariable("CODEX_HOME");
@@ -121,7 +189,7 @@ namespace CodexPhoneNotifier
             Text = "Codex 与 Claude Code 手机提醒"; StartPosition = FormStartPosition.CenterScreen;
             Font = new Font("Microsoft YaHei UI", 9F); ForeColor = ink;
             BackColor = Color.FromArgb(243, 246, 251); AutoScaleMode = AutoScaleMode.Dpi;
-            ClientSize = new Size(960, Math.Min(880, Screen.PrimaryScreen.WorkingArea.Height - 80)); MinimumSize = new Size(890, 700);
+            ClientSize = new Size(960, Math.Min(940, Screen.PrimaryScreen.WorkingArea.Height - 80)); MinimumSize = new Size(890, 700);
             using (Stream iconResource = Assembly.GetExecutingAssembly().GetManifestResourceStream("brand.icon"))
             using (Icon brand = new Icon(iconResource)) Icon = (Icon)brand.Clone();
             using (Stream taskbarResource = Assembly.GetExecutingAssembly().GetManifestResourceStream("brand.taskbar"))
@@ -135,8 +203,17 @@ namespace CodexPhoneNotifier
             };
             if (preview)
             {
-                ApplyStatus(new Dictionary<string, object> { { "installed", true }, { "codexInstalled", true }, { "claudeInstalled", true }, { "codexDetected", true }, { "claudeDetected", true }, { "codexEnabled", true }, { "claudeEnabled", true }, { "hasToken", true }, { "ntfyEnabled", false }, { "wechatEnabled", true }, { "server", "https://ntfy.sh" }, { "topic", "codex-demo-topic-for-preview" } });
+                Dictionary<string, object> demo = new Dictionary<string, object> { { "installed", true }, { "codexInstalled", true }, { "claudeInstalled", true }, { "codexDetected", true }, { "claudeDetected", true }, { "codexEnabled", true }, { "claudeEnabled", true }, { "hasToken", true }, { "ntfyEnabled", false }, { "wechatEnabled", true }, { "server", "https://ntfy.sh" }, { "topic", "codex-demo-topic-for-preview" } };
+                if (previewPage == "content")
+                {
+                    // 截图用：从不存在的临时目录读取默认内容，不读取或改动真实配置。
+                    string empty = Path.Combine(Path.GetTempPath(), "codex-phone-preview-" + Guid.NewGuid().ToString("N"));
+                    Dictionary<string, object> status = new DesktopBackend().Run(new Dictionary<string, object> { { "action", "status" }, { "directory", Path.Combine(empty, "codex") }, { "claudeDirectory", Path.Combine(empty, "claude") } });
+                    demo["content"] = JsonValue.Object(JsonValue.Object(status, "data"), "content");
+                }
+                ApplyStatus(demo);
                 result.Text = "Codex 与 Claude Code 提醒都已开启，通过微信聊天发送；ntfy 已暂停。主题和加密 Token 会保留，随时可以恢复。";
+                if (previewPage == "content") { tabs.SelectedTab = contentPage; result.Text = "选择左侧的一条提醒，修改标题和正文，预览会立即更新。点击保存后自动提醒就会使用新内容。"; }
             }
         }
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
@@ -208,7 +285,7 @@ namespace CodexPhoneNotifier
             Panel heading = new Panel { Dock = DockStyle.Fill };
             heading.Controls.Add(new Label { Text = "Codex 与 Claude Code 手机提醒", Font = new Font(Font.FontFamily, 20, FontStyle.Bold), AutoSize = true, Location = new Point(0, 0), ForeColor = ink });
             heading.Controls.Add(new Label { Text = "任务结束、等待回答、确认计划或需要授权时，让手机提醒你。", AutoSize = true, Location = new Point(2, 41), ForeColor = muted });
-            Label version = new Label { Text = "v0.7.0", AutoSize = true, Location = new Point(834, 10), ForeColor = muted };
+            Label version = new Label { Text = "v0.8.0", AutoSize = true, Location = new Point(834, 10), ForeColor = muted };
             heading.Controls.Add(version); root.Controls.Add(heading, 0, 0);
             heading.Resize += delegate { version.Left = Math.Max(0, heading.ClientSize.Width - version.Width - 4); };
             summary = new Label { Text = "正在读取本机设置…", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, ForeColor = blue };
@@ -224,10 +301,14 @@ namespace CodexPhoneNotifier
             a.Controls.Add(LabelText("任务完成、选择题、确认计划、工具授权、出错停止。", 20));
             claudeStatus = LabelText("", 20); a.Controls.Add(claudeStatus);
             foreach (FlowLayoutPanel source in new[] { c, a }) { source.AutoScroll = false; source.Parent.Padding = new Padding(16, 10, 16, 4); }
-            TabControl tabs = new TabControl { Dock = DockStyle.Fill, Padding = new Point(18, 7) };
+            tabs = new TabControl { Dock = DockStyle.Fill, Padding = new Point(18, 7) };
             TabPage notificationPage = new TabPage("通知渠道（两边共用）") { BackColor = BackColor, Padding = new Padding(12) };
+            contentPage = new TabPage("提醒内容") { BackColor = BackColor, Padding = new Padding(12) };
             TabPage helpPage = new TabPage("安装与帮助") { BackColor = Color.White, Padding = new Padding(20) };
-            tabs.TabPages.Add(notificationPage); tabs.TabPages.Add(helpPage); root.Controls.Add(tabs, 0, 3);
+            tabs.TabPages.Add(notificationPage); tabs.TabPages.Add(contentPage); tabs.TabPages.Add(helpPage); root.Controls.Add(tabs, 0, 3);
+            BuildContent(contentPage);
+            codexEnabled.CheckedChanged += delegate { if (!loading) UpdateButtons(); };
+            claudeEnabled.CheckedChanged += delegate { if (!loading) UpdateButtons(); };
             TableLayoutPanel cards = TwoColumns();
             notificationPage.Controls.Add(cards);
             FlowLayoutPanel n = Card(cards, 0, 18);
@@ -285,6 +366,89 @@ namespace CodexPhoneNotifier
             result = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, BorderStyle = BorderStyle.None, BackColor = BackColor, ForeColor = ink, Text = "正在读取设置。", TabStop = false };
             footer.Controls.Add(result, 0, 2); root.Controls.Add(footer, 0, 4);
         }
+        private void BuildContent(TabPage page)
+        {
+            TableLayoutPanel layout = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 1, ColumnCount = 2, Margin = new Padding(0) };
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 250)); layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            page.Controls.Add(layout);
+            Panel left = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, Padding = new Padding(10), Margin = new Padding(0, 0, 8, 0) };
+            contentList = new ListBox { Dock = DockStyle.Fill, BorderStyle = BorderStyle.None, IntegralHeight = false, Font = new Font(Font.FontFamily, 10.5F) };
+            contentList.SelectedIndexChanged += delegate { ShowContentItem(); };
+            Track(contentList); left.Controls.Add(contentList); layout.Controls.Add(left, 0, 0);
+            FlowLayoutPanel right = Card(layout, 1, 18);
+            contentHeading = LabelText("请选择一条提醒", 30); contentHeading.Font = new Font(Font.FontFamily, 12, FontStyle.Bold); right.Controls.Add(contentHeading);
+            contentHint = LabelText("", 36); contentHint.ForeColor = muted; right.Controls.Add(contentHint);
+            right.Controls.Add(LabelText("标题", 19));
+            contentTitle = new TextBox { Width = 390, Height = 27, Margin = new Padding(0, 0, 0, 10), BorderStyle = BorderStyle.FixedSingle, MaxLength = 60 };
+            right.Controls.Add(contentTitle);
+            right.Controls.Add(LabelText("正文（可以换行）", 19));
+            contentBody = new TextBox { Width = 390, Height = 84, Margin = new Padding(0, 0, 0, 6), BorderStyle = BorderStyle.FixedSingle, Multiline = true, AcceptsReturn = true, ScrollBars = ScrollBars.Vertical, MaxLength = 1000 };
+            right.Controls.Add(contentBody);
+            contentPlaceholders = LabelText("", 36); contentPlaceholders.ForeColor = muted; right.Controls.Add(contentPlaceholders);
+            right.Controls.Add(LabelText("手机上看到的样子（项目、原因等为示例值）", 19));
+            contentPreview = new TextBox { Width = 390, Height = 92, Margin = new Padding(0, 0, 0, 10), BorderStyle = BorderStyle.FixedSingle, Multiline = true, ReadOnly = true, BackColor = Color.FromArgb(246, 248, 252), TabStop = false };
+            right.Controls.Add(contentPreview);
+            contentReset = ButtonText("恢复默认", 140, delegate
+            {
+                ContentItem item = contentList.SelectedItem as ContentItem;
+                if (item == null) return;
+                contentTitle.Text = item.DefaultTitle; contentBody.Text = item.DefaultBody;
+            });
+            contentSend = ButtonText("保存并发送预览", 168, async delegate
+            {
+                ContentItem item = contentList.SelectedItem as ContentItem;
+                if (item == null) return;
+                previewTool = item.Tool; previewEvent = item.Event;
+                await RunOperation("preview", "", true);
+            });
+            Track(contentSend); right.Controls.Add(ButtonRow(contentReset, contentSend));
+            contentTitle.TextChanged += delegate { EditContent(); };
+            contentBody.TextChanged += delegate { EditContent(); };
+        }
+        private bool CanEdit(ContentItem item)
+        {
+            if (item.Tool == "codex") return codexInstalled || codexEnabled.Checked;
+            if (item.Tool == "claude") return claudeInstalled || claudeEnabled.Checked;
+            return true;
+        }
+        private void ShowContentItem()
+        {
+            ContentItem item = contentList.SelectedItem as ContentItem;
+            contentLoading = true;
+            if (item == null) { contentHeading.Text = "请选择一条提醒"; contentHint.Text = ""; contentTitle.Text = ""; contentBody.Text = ""; contentPlaceholders.Text = ""; }
+            else
+            {
+                contentHeading.Text = item.Display;
+                contentHint.Text = item.Hint;
+                contentTitle.Text = item.Title; contentBody.Text = item.Body;
+                List<string> names = new List<string>();
+                foreach (string name in item.Placeholders) names.Add("{" + name + "}");
+                contentPlaceholders.Text = "可用占位符：" + String.Join("  ", names.ToArray()) + "。标题和正文都能用；正文里某一行的占位符都为空时，整行会自动省略。";
+            }
+            contentLoading = false;
+            UpdateContentPreview(); UpdateButtons();
+        }
+        private void EditContent()
+        {
+            if (contentLoading) return;
+            ContentItem item = contentList.SelectedItem as ContentItem;
+            if (item == null) return;
+            item.Title = contentTitle.Text; item.Body = contentBody.Text;
+            Changed(); UpdateContentPreview();
+        }
+        private void UpdateContentPreview()
+        {
+            ContentItem item = contentList.SelectedItem as ContentItem;
+            if (item == null) { contentPreview.Text = ""; return; }
+            // 文档截图不显示真实电脑名。
+            Dictionary<string, string> values = ContentText.SampleValues(preview ? "我的电脑" : null);
+            // 与发送脚本一样：替换后为空时退回默认内容。
+            string title = ContentText.Render(item.Title, values, true);
+            if (title.Length == 0) title = ContentText.Render(item.DefaultTitle, values, true);
+            string body = ContentText.Render(item.Body, values, false);
+            if (body.Length == 0) body = ContentText.Render(item.DefaultBody, values, false);
+            contentPreview.Text = title + "\r\n\r\n" + body;
+        }
         private void OpenFile(string path, string missing)
         { if (File.Exists(path)) Process.Start(new ProcessStartInfo("notepad.exe", "\"" + path + "\"") { UseShellExecute = true }); else result.Text = missing; }
         private void OpenFolder(string path)
@@ -321,13 +485,30 @@ namespace CodexPhoneNotifier
         private Dictionary<string, object> MakeRequest(string action, string channel, bool includeSettings)
         {
             Dictionary<string, object> request = new Dictionary<string, object> { { "action", action }, { "directory", directory }, { "claudeDirectory", claudeDirectory }, { "channel", channel }, { "keepConfig", keepConfig } };
-            if (includeSettings) request["settings"] = new Dictionary<string, object> { { "codexEnabled", codexEnabled.Checked }, { "claudeEnabled", claudeEnabled.Checked }, { "ntfyEnabled", ntfyEnabled.Checked }, { "wechatEnabled", wechatEnabled.Checked }, { "server", server.Text }, { "topic", topic.Text }, { "token", token.Text } };
+            if (includeSettings)
+            {
+                Dictionary<string, object> settings = new Dictionary<string, object> { { "codexEnabled", codexEnabled.Checked }, { "claudeEnabled", claudeEnabled.Checked }, { "ntfyEnabled", ntfyEnabled.Checked }, { "wechatEnabled", wechatEnabled.Checked }, { "server", server.Text }, { "topic", topic.Text }, { "token", token.Text } };
+                // 还没读到内容时不发送，避免把已有的自定义内容当成空白清掉。与默认相同的内容发空字符串，表示用默认。
+                if (contentItems.Count > 0)
+                {
+                    Dictionary<string, object> content = new Dictionary<string, object> { { "shared", new Dictionary<string, object>() }, { "codex", new Dictionary<string, object>() }, { "claude", new Dictionary<string, object>() } };
+                    foreach (ContentItem item in contentItems)
+                    {
+                        Dictionary<string, object> group = (Dictionary<string, object>)content[item.Tool];
+                        group[item.TitleKey] = ContentText.Same(item.Title, item.DefaultTitle) ? "" : item.Title.Trim();
+                        group[item.BodyKey] = ContentText.Same(item.Body, item.DefaultBody) ? "" : item.Body.Replace("\r\n", "\n").Trim();
+                    }
+                    settings["content"] = content;
+                }
+                request["settings"] = settings;
+            }
+            if (action == "preview") { request["tool"] = previewTool; request["event"] = previewEvent; }
             return request;
         }
         private async Task RunOperation(string action, string channel, bool includeSettings)
         {
             if (busy || preview) return;
-            busy = true; foreach (Control control in operationControls) control.Enabled = false; UseWaitCursor = true;
+            busy = true; foreach (Control control in operationControls) control.Enabled = false; UseWaitCursor = true; UpdateButtons();
             result.Text = action == "status" ? "正在读取本机设置…" : "正在处理，请稍等…";
             Dictionary<string, object> request = MakeRequest(action, channel, includeSettings);
             try
@@ -372,6 +553,20 @@ namespace CodexPhoneNotifier
             string modes = ntfyEnabled.Checked && wechatEnabled.Checked ? "ntfy + 微信聊天" : ntfyEnabled.Checked ? "ntfy" : wechatEnabled.Checked ? "微信聊天" : "全部通知已暂停";
             string tools = !installed ? "尚未部署通知工具" : "Codex " + (codexInstalled ? (codexEnabled.Checked ? "开启" : "暂停") : "未部署") + "　·　Claude Code " + (claudeInstalled ? (claudeEnabled.Checked ? "开启" : "暂停") : "未部署");
             summary.Text = tools + "　 ·　 渠道：" + modes;
+            if (data.ContainsKey("content"))
+            {
+                Dictionary<string, object> content = JsonValue.Object(data, "content");
+                string selected = contentList.SelectedItem is ContentItem ? ((ContentItem)contentList.SelectedItem).Display : "";
+                contentItems.Clear();
+                foreach (string tool in new[] { "shared", "codex", "claude" })
+                    foreach (object entry in JsonValue.List(content, tool))
+                        if (entry is Dictionary<string, object>) contentItems.Add(ContentItem.From(tool, (Dictionary<string, object>)entry));
+                contentList.BeginUpdate(); contentList.Items.Clear();
+                int index = 0;
+                for (int i = 0; i < contentItems.Count; i++) { contentList.Items.Add(contentItems[i]); if (contentItems[i].Display == selected) index = i; }
+                contentList.EndUpdate();
+                if (contentItems.Count > 0) contentList.SelectedIndex = index; else ShowContentItem();
+            }
             dirty = false; loading = false; UpdateButtons();
         }
         private void UpdateButtons()
@@ -379,6 +574,13 @@ namespace CodexPhoneNotifier
             save.Text = installed ? "保存设置" : "部署并保存";
             testNtfy.Enabled = installed && !busy; testWechat.Enabled = installed && !busy;
             removeNtfy.Enabled = installed && !busy; removeWechat.Enabled = installed && !busy; uninstall.Enabled = installed && !busy;
+            // 没部署、也没打开开关的工具，内容暂不能编辑：保存时不会写进它的配置。
+            ContentItem item = contentList.SelectedItem as ContentItem;
+            bool editable = item != null && CanEdit(item) && !busy;
+            contentTitle.Enabled = editable; contentBody.Enabled = editable; contentReset.Enabled = editable;
+            contentSend.Enabled = item != null && installed && !busy;
+            if (item != null && !CanEdit(item)) contentHint.Text = item.Hint + "　打开上方的 " + (item.Tool == "codex" ? "Codex" : "Claude Code") + " 提醒后才能编辑。";
+            else if (item != null) contentHint.Text = item.Hint;
         }
         public void RenderPreview(string path)
         {
@@ -396,7 +598,7 @@ namespace CodexPhoneNotifier
             Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
             try
             {
-                if (args.Length == 2 && args[0] == "--render-preview") { using (MainForm form = new MainForm(null, true)) form.RenderPreview(Path.GetFullPath(args[1])); return; }
+                if (args.Length >= 2 && args[0] == "--render-preview") { using (MainForm form = new MainForm(null, true, args.Length > 2 ? args[2] : "")) form.RenderPreview(Path.GetFullPath(args[1])); return; }
                 if (args.Length == 2 && args[0] == "--self-check") { SelfCheck(Path.GetFullPath(args[1])); return; }
                 using (MainForm form = new MainForm(new DesktopBackend(), false)) Application.Run(form);
             }
@@ -423,8 +625,11 @@ namespace CodexPhoneNotifier
                 Verify(File.Exists(claudeSettings) && File.ReadAllText(claudeSettings).Contains("notify.ps1") && File.Exists(Path.Combine(claudeDirectory, "phone-notifier", "pushplus-token.dpapi")), ref checks);
                 Verify(!new JavaScriptSerializer().Serialize(response).Contains("gui-test-token-not-a-real-secret"), ref checks);
                 settings["token"] = ""; settings["wechatEnabled"] = false; settings["codexEnabled"] = false; request["action"] = "save";
+                settings["content"] = new Dictionary<string, object> { { "shared", new Dictionary<string, object> { { "testTitle", "自检测试标题" } } }, { "claude", new Dictionary<string, object> { { "body", "自检正文\n电脑：{电脑}" } } }, { "codex", new Dictionary<string, object>() } };
                 response = backend.Run(request); data = JsonValue.Object(response,"data");
                 Verify(JsonValue.Flag(response,"ok") && JsonValue.Flag(data,"hasToken") && !JsonValue.Flag(data,"wechatEnabled") && !JsonValue.Flag(data,"codexEnabled") && JsonValue.Flag(data,"claudeEnabled"), ref checks);
+                string claudeConfig = File.ReadAllText(Path.Combine(claudeDirectory, "phone-notifier", "config.json")), codexConfig = File.ReadAllText(Path.Combine(directory, "ntfy-codex.json"));
+                Verify(claudeConfig.Contains("自检测试标题") && claudeConfig.Contains("自检正文") && codexConfig.Contains("自检测试标题") && !codexConfig.Contains("自检正文"), ref checks);
                 request["action"] = "remove-wechat"; response = backend.Run(request);
                 Verify(JsonValue.Flag(response,"ok") && !JsonValue.Flag(JsonValue.Object(response,"data"),"hasToken"), ref checks);
                 request["action"] = "uninstall"; request["keepConfig"] = false; response = backend.Run(request);

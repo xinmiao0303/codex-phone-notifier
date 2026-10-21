@@ -83,6 +83,44 @@ try {
     $desired.codexEnabled = $true; $desired.claudeEnabled = $true
     $bothOn = Invoke-DesktopRequest 'save' $desired
     Assert-DesktopCheck ($bothOn.ok -and $bothOn.data.codexEnabled -and $bothOn.data.claudeEnabled) '两个提醒可以同时开启'
+
+    # 提醒内容：界面读取默认值、保存自定义内容（测试内容两边共用）、拒绝无效内容、发送预览。
+    $content = $bothOn.data.content
+    Assert-DesktopCheck (@($content.shared).Count -eq 1 -and @($content.shared)[0].defaultTitle -eq '手机提醒测试' -and @($content.codex).Count -eq 3 -and @($content.claude).Count -eq 6) '界面拿到通用测试、Codex 三类和 Claude Code 六类提醒'
+    Assert-DesktopCheck (@($content.codex)[0].defaultBody -match '\{电脑\}' -and @(@($content.claude) | Where-Object { $_.event -eq 'error' })[0].placeholders -contains '原因') '默认正文和占位符来自发送脚本'
+    $desired | Add-Member -NotePropertyName content -NotePropertyValue ([pscustomobject]@{ shared=[pscustomobject]@{ testTitle='界面测试标题'; testBody='' }; codex=[pscustomobject]@{ inputBody="自定义输入`r`n在 {电脑}" }; claude=[pscustomobject]@{ title=''; planTitle='计划好了 · {项目}' } })
+    $edited = Invoke-DesktopRequest 'save' $desired
+    $codexSettings = Read-NotifierJson $configPath; $claudeSettings = Read-NotifierJson $claude.config
+    Assert-DesktopCheck ($edited.ok -and $codexSettings.testTitle -eq '界面测试标题' -and $claudeSettings.testTitle -eq '界面测试标题') '通用测试内容同时写入两边'
+    Assert-DesktopCheck ($codexSettings.inputBody -eq "自定义输入`n在 {电脑}" -and $null -eq $claudeSettings.PSObject.Properties['inputBody'] -and $claudeSettings.planTitle -eq '计划好了 · {项目}') '各自的内容只写入对应工具'
+    Assert-DesktopCheck ($null -eq $claudeSettings.PSObject.Properties['title'] -and @(@($edited.data.content.claude) | Where-Object { $_.event -eq 'done' })[0].title -eq '') '留空表示恢复默认，删除该键'
+    $hash = (Get-FileHash -LiteralPath $configPath).Hash
+    $desired.content.claude.planTitle = "两行`n标题"
+    $badTitle = Invoke-DesktopRequest 'save' $desired
+    $desired.content.claude.planTitle = '计划好了 · {项目}'
+    $desired.content.codex.inputBody = 'x' * 1001
+    $badBody = Invoke-DesktopRequest 'save' $desired
+    $desired.content.codex.inputBody = "自定义输入`r`n在 {电脑}"
+    Assert-DesktopCheck (-not $badTitle.ok -and -not $badBody.ok -and (Get-FileHash -LiteralPath $configPath).Hash -eq $hash) '多行标题和过长正文在写文件前被拒绝'
+    $global:DesktopTestRequests = @()
+    function Invoke-RestMethod { param($Method,$Uri,$Headers,$Body,$ContentType,$TimeoutSec); $global:DesktopTestRequests += ([Text.Encoding]::UTF8.GetString($Body) | ConvertFrom-Json); return [pscustomobject]@{ id='desktop-preview'; event='message' } }
+    $request = [pscustomobject]@{ action='preview'; tool='shared'; event='test'; directory=$directory; claudeDirectory=$claudeDirectory; settings=$desired } | ConvertTo-Json -Depth 12 | ConvertFrom-Json
+    $sharedPreview = (& $backend -RequestObject $request) | ConvertFrom-Json
+    $request.tool = 'claude'; $request.event = 'plan'
+    $claudePreview = (& $backend -RequestObject $request) | ConvertFrom-Json
+    $request.tool = 'codex'; $request.event = 'consent'
+    $codexPreview = (& $backend -RequestObject $request) | ConvertFrom-Json
+    $titles = @($global:DesktopTestRequests | ForEach-Object { $_.title })
+    Assert-DesktopCheck ($sharedPreview.ok -and $claudePreview.ok -and $codexPreview.ok -and $titles.Count -eq 3) '三种预览各发一条'
+    Assert-DesktopCheck ($titles[0] -eq '预览 · 界面测试标题' -and $titles[1] -eq '预览 · 计划好了 · 示例项目' -and $titles[2] -eq '预览 · Codex 等待你授权') '预览使用刚保存的内容和示例值'
+    $request.tool = 'shared'; $request.event = 'done'
+    $mismatch = (& $backend -RequestObject $request) | ConvertFrom-Json
+    Assert-DesktopCheck (-not $mismatch.ok -and $global:DesktopTestRequests.Count -eq 3) '不认识的预览请求被拒绝，不发送'
+    $desired.content = [pscustomobject]@{ shared=[pscustomobject]@{ testTitle='' }; codex=[pscustomobject]@{ inputBody='' }; claude=[pscustomobject]@{ planTitle='' } }
+    $restored = Invoke-DesktopRequest 'save' $desired
+    $codexSettings = Read-NotifierJson $configPath; $claudeSettings = Read-NotifierJson $claude.config
+    Assert-DesktopCheck ($restored.ok -and $null -eq $codexSettings.PSObject.Properties['testTitle'] -and $null -eq $codexSettings.PSObject.Properties['inputBody'] -and $null -eq $claudeSettings.PSObject.Properties['planTitle']) '全部恢复默认后配置里不留自定义键'
+    $desired.PSObject.Properties.Remove('content')
     Remove-Item Function:\Invoke-RestMethod
 
     $desired.ntfyEnabled = $false
@@ -143,7 +181,7 @@ try {
     $global:DesktopTestRequests = @()
     function Invoke-RestMethod { param($Method,$Uri,$Headers,$Body,$ContentType,$TimeoutSec); $global:DesktopTestRequests += [Text.Encoding]::UTF8.GetString($Body); return [pscustomobject]@{ id='desktop-test'; event='message' } }
     $claudeTest = Invoke-DesktopRequest 'test' $none 'ntfy' $false $onlyCodex $onlyClaude
-    Assert-DesktopCheck ($claudeTest.ok -and $global:DesktopTestRequests.Count -eq 1 -and $global:DesktopTestRequests[0] -match 'Claude Code') '只装 Claude Code 时测试由它发送'
+    Assert-DesktopCheck ($claudeTest.ok -and $global:DesktopTestRequests.Count -eq 1 -and $global:DesktopTestRequests[0] -match '手机提醒测试' -and [IO.File]::ReadAllText((Get-ClaudeNotifierPaths $onlyClaude).log) -match 'sent/test') '只装 Claude Code 时测试由它发送，使用通用测试标题'
     Remove-Item Function:\Invoke-RestMethod
     $gone = Invoke-DesktopRequest 'uninstall' $null '' $false $onlyCodex $onlyClaude
     Assert-DesktopCheck ($gone.ok -and -not $gone.data.installed -and -not [IO.Directory]::Exists($onlyCodex)) '一键卸载不会创建没用过的 Codex 目录'
@@ -154,7 +192,7 @@ try {
         $resultFile = Join-Path $workspace 'exe-result.json'
         $process = Start-Process -FilePath $executable -ArgumentList @('--self-check', ('"' + $resultFile + '"')) -WindowStyle Hidden -PassThru -Wait
         $verified = Read-NotifierJson $resultFile
-        Assert-DesktopCheck ($process.ExitCode -eq 0 -and $verified.ok -and $verified.checks -eq 9) '真实 EXE 通过匿名标准输入完成九项集成检查'
+        Assert-DesktopCheck ($process.ExitCode -eq 0 -and $verified.ok -and $verified.checks -eq 10) '真实 EXE 通过匿名标准输入完成十项集成检查'
     }
     Write-Host ('PASS: desktop {0} checks; PowerShell {1}' -f $script:checks,$PSVersionTable.PSVersion)
 } finally {

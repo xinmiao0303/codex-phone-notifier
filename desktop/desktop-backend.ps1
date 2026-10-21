@@ -54,7 +54,76 @@ function Get-DesktopStatus {
         hasToken=([IO.File]::Exists($tokenPath) -or [IO.File]::Exists($claude.token))
         ntfyEnabled=($channels -contains 'ntfy'); wechatEnabled=($channels -contains 'wechat')
         server=$server; topic=[string]$settings.topic
+        content=(Get-ContentStatus)
     }
+}
+function Get-ContentTemplates {
+    param([string]$Tool)
+    # 默认标题与正文只定义在发送脚本里，界面通过这里读取，避免两处不一致。
+    $script = Join-Path $PSScriptRoot '..\scripts\notify.ps1'
+    if ($Tool -eq 'claude') { $script = Join-Path $PSScriptRoot '..\scripts\claude-notify.ps1' }
+    return (& $script -ListContent)
+}
+function Get-ContentList {
+    param([string]$Tool, [string]$Config, [string[]]$Only = @(), [string[]]$Skip = @())
+    $templates = Get-ContentTemplates $Tool
+    $settings = Read-NotifierJson $Config
+    foreach ($name in $templates.Keys) {
+        if (($Only.Count -gt 0 -and $Only -notcontains $name) -or $Skip -contains $name) { continue }
+        $template = $templates[$name]
+        $title = ''; $body = ''
+        if ($null -ne $settings.PSObject.Properties[$template.titleKey]) { $title = [string]$settings.($template.titleKey) }
+        if ($null -ne $settings.PSObject.Properties[$template.bodyKey]) { $body = [string]$settings.($template.bodyKey) }
+        # 旧版写进配置的默认标题按“未自定义”显示，界面里就是新的默认值。
+        if ($title -in $template.legacy) { $title = '' }
+        [ordered]@{ event=$name; label=$template.label; hint=$template.hint; titleKey=$template.titleKey; bodyKey=$template.bodyKey; defaultTitle=$template.title; defaultBody=$template.body; title=$title; body=$body; placeholders=@($template.placeholders) }
+    }
+}
+function Get-ContentStatus {
+    $sharedConfig = $configPath
+    if (-not [IO.File]::Exists($configPath) -and [IO.File]::Exists($claude.config)) { $sharedConfig = $claude.config }
+    return [ordered]@{
+        shared=@(Get-ContentList 'codex' $sharedConfig @('test'))
+        codex=@(Get-ContentList 'codex' $configPath @() @('test'))
+        claude=@(Get-ContentList 'claude' $claude.config @() @('test'))
+    }
+}
+function Assert-ContentInput {
+    if ($null -eq $desired.PSObject.Properties['content'] -or $null -eq $desired.content) { return }
+    foreach ($group in @($desired.content.PSObject.Properties)) {
+        foreach ($entry in @($group.Value.PSObject.Properties)) {
+            $text = [string]$entry.Value
+            if ($entry.Name -like '*Body' -or $entry.Name -eq 'body') {
+                if ($text.Length -gt 1000) { throw '[用户提示]提醒正文请控制在 1000 字以内。' }
+            } elseif ($text.Length -gt 60 -or $text -match '[\r\n]') { throw '[用户提示]提醒标题请控制在 60 字以内，并且只写一行。' }
+        }
+    }
+}
+function Set-ContentSettings {
+    param([string]$Path, [string]$Tool)
+    # 只写入发送脚本认识的键；留空表示恢复默认，直接删除该键。
+    if ($null -eq $desired.PSObject.Properties['content'] -or $null -eq $desired.content) { return }
+    $settings = Read-NotifierJson $Path
+    $templates = Get-ContentTemplates $Tool
+    foreach ($name in $templates.Keys) {
+        $group = $desired.content.$Tool
+        if ($name -eq 'test') { $group = $desired.content.shared }
+        if ($null -eq $group) { continue }
+        foreach ($key in @($templates[$name].titleKey, $templates[$name].bodyKey)) {
+            $member = $group.PSObject.Properties[$key]
+            if ($null -eq $member) { continue }
+            $text = (([string]$member.Value) -replace "`r`n", "`n").Trim()
+            if ($text) { Set-NotifierProperty $settings $key $text } else { $settings.PSObject.Properties.Remove($key) }
+        }
+    }
+    Write-NotifierJson $Path $settings
+}
+function Get-TestSender {
+    # 只发一条：优先用开启中的 Codex 发送脚本，其次用 Claude Code 的。
+    if (-not (Test-CodexInstalled) -or (-not $wantCodex -and $wantClaude -and (Test-ClaudeNotifierInstalled $claude))) {
+        return [pscustomobject]@{ script=$claude.script; config=$claude.config }
+    }
+    return [pscustomobject]@{ script=$senderPath; config=$configPath }
 }
 function Read-DesiredFlag {
     param([string]$Name, [bool]$Fallback)
@@ -75,6 +144,7 @@ function Assert-DesktopInput {
     if ($topic -and $topic -notmatch '^[A-Za-z0-9_-]{1,64}$') { throw '[用户提示]ntfy 主题请使用 1 至 64 个英文字母、数字、短横线或下划线。' }
     if ([bool]$desired.ntfyEnabled -and -not $topic) { throw '[用户提示]请填写 ntfy 主题，或点击“生成新主题”。' }
     if ([bool]$desired.wechatEnabled -and -not [IO.File]::Exists($tokenPath) -and -not [IO.File]::Exists($claude.token) -and [string]::IsNullOrWhiteSpace([string]$desired.token)) { throw '[用户提示]开启微信前，请填写 PushPlus 用户 Token，并完成 ClawBot 绑定和激活。' }
+    Assert-ContentInput
 }
 function Set-ChannelSettings {
     param([string]$Path, [bool]$Enabled)
@@ -132,10 +202,12 @@ function Save-DesktopSettings {
         if ($useCodex) {
             Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..\scripts\notify.ps1') -Destination $senderPath -Force
             Set-ChannelSettings $configPath $wantCodex
+            Set-ContentSettings $configPath 'codex'
         }
         if ($useClaude) {
             Copy-NotifierScript (Join-Path $PSScriptRoot '..\scripts\claude-notify.ps1') $claude.script
             Set-ChannelSettings $claude.config $wantClaude
+            Set-ContentSettings $claude.config 'claude'
         }
         $targets = @()
         if ($useCodex) { $targets += [pscustomobject]@{ token=$tokenPath; state=$statePath } }
@@ -235,12 +307,30 @@ try {
             Assert-DesktopInput
             if (($request.channel -eq 'ntfy' -and -not [bool]$desired.ntfyEnabled) -or ($request.channel -eq 'wechat' -and -not [bool]$desired.wechatEnabled)) { throw '[用户提示]请先打开这个渠道的开关，再发送测试。' }
             Save-DesktopSettings
-            # 只发一条测试：优先用开启中的 Codex 发送脚本，其次用 Claude Code 的。
-            $sender = $senderPath; $senderConfig = $configPath
-            if (-not (Test-CodexInstalled) -or (-not $wantCodex -and $wantClaude -and (Test-ClaudeNotifierInstalled $claude))) { $sender = $claude.script; $senderConfig = $claude.config }
-            & $sender -Event test -Channel ([string]$request.channel) -ConfigPath $senderConfig -Strict *> $null
+            $sender = Get-TestSender
+            & $sender.script -Event test -Channel ([string]$request.channel) -ConfigPath $sender.config -Strict *> $null
             if ($request.channel -eq 'wechat') { $message = '微信聊天测试请求已提交。请锁屏后检查手机是否收到；接口接受请求不等于送达。' }
             else { $message = 'ntfy 测试已发布。请检查订阅该主题的 ntfy App。' }
+        }
+        'preview' {
+            $tool = [string]$request.tool; $eventName = [string]$request.event
+            if ($tool -notin @('codex','claude','shared')) { throw '[用户提示]请先在列表里选择一条提醒。' }
+            Assert-DesktopInput
+            if (-not [bool]$desired.ntfyEnabled -and -not [bool]$desired.wechatEnabled) { throw '[用户提示]请先开启至少一个通知渠道，再发送预览。' }
+            Save-DesktopSettings
+            if ($tool -eq 'shared') { $sender = Get-TestSender }
+            elseif ($tool -eq 'codex') {
+                if (-not (Test-CodexInstalled)) { throw '[用户提示]请先部署 Codex 提醒，再发送它的预览。' }
+                $sender = [pscustomobject]@{ script=$senderPath; config=$configPath }
+            } else {
+                if (-not (Test-ClaudeNotifierInstalled $claude)) { throw '[用户提示]请先部署 Claude Code 提醒，再发送它的预览。' }
+                $sender = [pscustomobject]@{ script=$claude.script; config=$claude.config }
+            }
+            $known = @((Get-ContentTemplates ($(if ($tool -eq 'claude') { 'claude' } else { 'codex' }))).Keys)
+            if ($eventName -notin $known -or ($tool -eq 'shared') -ne ($eventName -eq 'test')) { throw '[用户提示]不支持预览这条提醒，请重新打开软件。' }
+            try { & $sender.script -Event $eventName -Preview -ConfigPath $sender.config -Strict *> $null }
+            catch { throw ('[用户提示]预览发送失败：' + $_.Exception.Message) }
+            $message = '预览已发到开启的渠道，标题前带“预览 ·”。自动提醒会使用刚保存的内容。'
         }
         { $_ -in @('remove-ntfy','remove-wechat') } {
             $codexReady = [IO.File]::Exists($configPath); $claudeReady = [IO.File]::Exists($claude.config)

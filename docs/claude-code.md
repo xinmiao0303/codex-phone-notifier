@@ -16,7 +16,7 @@ Claude Code 做完这一轮任务，或者正在等你回答、确认计划、�
 | 请求使用工具的权限，约 6 秒仍未答复 | Claude Code 等待你授权 | `Notification`（permission_prompt） |
 | 因限流、登录失效、服务繁忙等 API 错误中断 | Claude Code 出错停止 | `StopFailure` |
 | 回复完约 60 秒你还没动（默认关闭，`-IdleReminder` 开启） | Claude Code 仍在等你 | `Notification`（idle_prompt） |
-| 你主动发送测试 | Claude Code 通知测试 | 测试按钮或 `send-test.ps1` |
+| 你主动发送测试 | 手机提醒测试（与 Codex 共用） | 测试按钮或 `send-test.ps1` |
 
 正文只有提醒、电脑名称和时间，不包含聊天内容、代码、问题正文、弹窗内容或命令。时间格式与 Codex 提醒一致：`2026-10-20    08:30:00`。
 
@@ -98,12 +98,15 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\claude-code\send-test.
 | --- | --- |
 | `enabled` | `false` 时暂停 Claude Code 提醒（图形界面的开关），钩子保留 |
 | `channels` | `["ntfy"]`、`["wechat"]`、`["ntfy", "wechat"]`，或 `[]` 暂停全部 |
-| `title` / `inputTitle` / `planTitle` / `approvalTitle` / `errorTitle` / `idleTitle` / `testTitle` | 各类提醒的标题 |
+| `title` / `inputTitle` / `planTitle` / `approvalTitle` / `errorTitle` / `idleTitle` / `testTitle` | 各类提醒的标题，可用占位符 |
+| `body` / `inputBody` / `planBody` / `approvalBody` / `errorBody` / `idleBody` / `testBody` | 各类提醒的正文，可用占位符；留空用默认 |
 | `server` / `topic` / `authorization` | 仅 ntfy：服务器、主题和服务器认证 |
 | `priority` / `tags` / `inputTags` / `click` | 仅 ntfy：优先级、图标和点击链接 |
 | `showProject` | `true` 时正文增加一行“项目：文件夹名”，同时开多个会话时便于区分；默认 `false` |
 | `notifyWhilePaused` | `true` 时，后台子代理或定时唤醒还在等待时也报完成；默认 `false` |
 | `includeHeadless` | `true` 时，`claude -p` 和 SDK 调用也提醒；默认 `false` |
+
+标题和正文推荐在软件的 **提醒内容** 页修改，支持 `{电脑}`、`{时间}`、`{项目}`、`{原因}`、`{后台}` 占位符并能实时预览，规则见 [图形界面教程](desktop.md#修改提醒内容)。有自定义正文时 `showProject` 不再生效，需要项目名请在正文里写 `{项目}`。
 
 修改配置后，下一次事件立即使用新设置，无需重启。[claude-code/config.example.json](../claude-code/config.example.json) 是可公开的示例。
 

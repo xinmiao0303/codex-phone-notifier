@@ -210,7 +210,31 @@ try {
     & $notifySource -Event test -ConfigPath $paths.config -Strict *> $null
     Assert-Check ($global:NotifierTestRequests.Count -eq $count + 1) '关闭提醒不影响手动测试'
     $count = $global:NotifierTestRequests.Count
+    & $notifySource -Event error -ConfigPath $paths.config -Strict -Preview *> $null
+    $sent = @(Get-Sent $count); $count = $global:NotifierTestRequests.Count
+    Assert-Check ($sent.Count -eq 1 -and $sent[0].payload.title -eq '预览 · Claude Code 出错停止' -and $sent[0].payload.message -match '原因：达到速率或用量限制') '预览不受开关影响，带前缀和示例原因'
     Set-NotifierProperty $config 'enabled' $true
+
+    # 自定义标题和正文：占位符替换，整行占位符为空时省略；旧版默认测试标题换成通用标题。
+    $templates = & $notifySource -ListContent
+    Assert-Check ((@($templates.Keys) -join ',') -eq 'done,input,plan,approval,error,idle,test') '列出七类可编辑提醒'
+    $codexTemplates = & (Join-Path $repository 'scripts\notify.ps1') -ListContent
+    Assert-Check ($templates.test.title -eq $codexTemplates.test.title -and $templates.test.body -eq $codexTemplates.test.body -and $templates.test.titleKey -eq $codexTemplates.test.titleKey) 'Codex 与 Claude Code 的通用测试内容一致'
+    Set-NotifierProperty $config 'title' '{项目} 做完了'
+    Set-NotifierProperty $config 'body' "活干完了`n{后台}`n项目：{项目}`n电脑 {电脑}"
+    Set-NotifierProperty $config 'errorBody' "出错：{原因}"
+    Set-NotifierProperty $config 'testTitle' 'Claude Code 通知测试'
+    Write-NotifierJson $paths.config $config
+    Send-Hook @{ hook_event_name='Stop'; session_id='c1'; prompt_id='p1'; cwd='D:\工程\电池 项目' }
+    Send-Hook @{ hook_event_name='Stop'; session_id='c2'; prompt_id='p1' }
+    Send-Hook @{ hook_event_name='StopFailure'; session_id='c3'; prompt_id='p1'; error='overloaded' }
+    & $notifySource -Event test -ConfigPath $paths.config -Strict *> $null
+    $sent = @(Get-Sent $count); $count = $global:NotifierTestRequests.Count
+    Assert-Check ($sent[0].payload.title -eq '电池 项目 做完了' -and $sent[0].payload.message -eq ("活干完了`r`n项目：电池 项目`r`n电脑 " + $env:COMPUTERNAME)) '自定义完成提醒按模板替换，没有后台任务时省略该行'
+    Assert-Check ($sent[1].payload.title -eq '做完了' -and $sent[1].payload.message -notmatch '项目') '没有项目时标题去掉占位符、正文省略项目行'
+    Assert-Check ($sent[2].payload.title -eq 'Claude Code 出错停止' -and $sent[2].payload.message -eq '出错：服务繁忙') '只改正文时标题保持默认'
+    Assert-Check ($sent[3].payload.title -eq '手机提醒测试') '旧版默认测试标题换成通用标题'
+    foreach ($name in @('title','body','errorBody','testTitle')) { $config.PSObject.Properties.Remove($name) }
     Set-NotifierProperty $config 'channels' @()
     Write-NotifierJson $paths.config $config
     Send-Hook @{ hook_event_name='Stop'; session_id='s10'; prompt_id='p1' }
@@ -257,7 +281,7 @@ try {
     Assert-Check ($sent.Count -eq 2 -and $wechat.Count -eq 1) '双通道各发送一次'
     Assert-Check ($wechat[0].payload.token -eq $fakeToken -and $wechat[0].payload.channel -eq 'clawbot' -and $wechat[0].payload.template -eq 'txt') '微信走 ClawBot 纯文本'
     Assert-Check ($null -eq $wechat[0].payload.PSObject.Properties['topic'] -and $null -eq $wechat[0].payload.PSObject.Properties['to']) '只发给密钥所属用户'
-    Assert-Check ($wechat[0].payload.title -eq 'Claude Code 通知测试') '微信测试标题为中文'
+    Assert-Check ($wechat[0].payload.title -eq '手机提醒测试') '微信测试使用通用中文标题'
     $global:PushPlusCode = 903
     $rejected = $false
     try { & $notifySource -Event test -Channel wechat -ConfigPath $paths.config -Strict *> $null } catch { $rejected = $_.Exception.Message -match '密钥无效' }

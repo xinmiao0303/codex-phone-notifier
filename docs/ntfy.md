@@ -29,7 +29,7 @@
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\send-test.ps1 -Channel ntfy
 ~~~
 
-去手机的 **ntfy App** 检查 **Codex 通知测试**。这条命令不会发到微信，也不会改变自动提醒通道。
+去手机的 **ntfy App** 检查 **手机提醒测试**。这条命令不会发到微信，也不会改变自动提醒通道。
 
 然后回到[首页的钩子审查与重启步骤](../README.md#3-审查并信任-codex-钩子)，验证真正的完成提醒和等待回答提醒。只测发送成功，不能证明 Codex 已经自动触发。
 
@@ -58,7 +58,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\send-test.ps1 -Channel
 | tags / inputTags | 完成与输入提醒的图标标签 |
 | click | 新通知的点击链接；默认空字符串 |
 
-`title`、`inputTitle`、`testTitle` 是共用标题，修改后也会影响已启用的微信通道。上表中的 ntfy 专用字段不控制微信。
+`title`、`inputTitle`、`testTitle` 等标题和 `body` 等正文是两种通道共用的提醒内容，修改后也会影响已启用的微信通道；推荐在软件的“提醒内容”页修改。上表中的 ntfy 专用字段不控制微信。
 
 ### 使用自己的服务器或主题
 

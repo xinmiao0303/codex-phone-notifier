@@ -70,7 +70,7 @@ try {
     Assert-Check ($global:NotifierTestRequests.Count -eq 3) '三个通知事件各发送一次'
     Assert-Check ($global:NotifierTestRequests[0].payload.title -eq '自定义中文标题') '支持自定义完成标题'
     Assert-Check ($global:NotifierTestRequests[1].payload.title -eq 'Codex 等待你回答') '输入标题为中文'
-    Assert-Check ($global:NotifierTestRequests[2].payload.title -eq 'Codex 通知测试') '测试标题为中文'
+    Assert-Check ($global:NotifierTestRequests[2].payload.title -eq '手机提醒测试') '测试标题为通用中文标题'
     Assert-Check ($global:NotifierTestRequests[1].payload.message -match '等待你选择或回答') 'UTF-8 正文没有乱码'
     Assert-Check ($global:NotifierTestRequests[1].payload.message -match '时间：\d{4}-\d{2}-\d{2} {4}\d{2}:\d{2}:\d{2}$') '通知时间没有时区，日期与时间之间为四个空格'
     Assert-Check ($global:NotifierTestRequests[0].payload.priority -eq 4) '文字优先级映射为 JSON 数字'
@@ -78,6 +78,32 @@ try {
     Assert-Check ($global:NotifierTestRequests[0].contentType -eq 'application/json; charset=utf-8') '明确使用 UTF-8 JSON'
     & $notifySource -Event startup -ConfigPath $config *> $null
     Assert-Check ($global:NotifierTestRequests.Count -eq 3) '启动事件不发送通知'
+
+    # 自定义标题和正文：占位符替换；整行占位符为空时省略；旧版默认测试标题换成通用标题。
+    $templates = & $notifySource -ListContent
+    Assert-Check ((@($templates.Keys) -join ',') -eq 'done,input,consent,test') '列出四类可编辑提醒'
+    $custom = Read-NotifierJson $config
+    Set-NotifierProperty $custom 'inputTitle' '回答一下 · {电脑}'
+    Set-NotifierProperty $custom 'inputBody' "请回来回答`n项目：{项目}`n在 {电脑} 上"
+    Set-NotifierProperty $custom 'testTitle' 'Codex 通知测试'
+    Set-NotifierProperty $custom 'testBody' "   `n   "
+    Write-NotifierJson $config $custom
+    & $notifySource -Event input -ConfigPath $config -Strict *> $null
+    & $notifySource -Event input -ConfigPath $config -Strict -HookInput ([pscustomobject]@{ cwd='D:\工程\电池 项目' }) *> $null
+    & $notifySource -Event test -ConfigPath $config -Strict *> $null
+    $sent = @($global:NotifierTestRequests | Select-Object -Skip 3)
+    Assert-Check ($sent[0].payload.title -eq ('回答一下 · ' + $env:COMPUTERNAME)) '标题支持占位符'
+    Assert-Check ($sent[0].payload.message -eq ("请回来回答`r`n在 " + $env:COMPUTERNAME + ' 上')) '没有项目时省略整行，正文完全按自定义内容'
+    Assert-Check ($sent[1].payload.message -match '项目：电池 项目') '有项目时显示文件夹名'
+    Assert-Check ($sent[2].payload.title -eq '手机提醒测试' -and $sent[2].payload.message -match '^这是一条测试通知') '旧版默认标题和空白正文都退回新默认'
+    Set-NotifierProperty $custom 'enabled' $false
+    Write-NotifierJson $config $custom
+    & $notifySource -Event consent -ConfigPath $config -Strict -Preview *> $null
+    $preview = @($global:NotifierTestRequests)[-1]
+    Assert-Check ($global:NotifierTestRequests.Count -eq 7 -and $preview.payload.title -eq '预览 · Codex 等待你授权') '预览不受开关影响，标题带预览前缀'
+    foreach ($name in @('inputTitle','inputBody','testTitle','testBody','enabled')) { $custom.PSObject.Properties.Remove($name) }
+    Write-NotifierJson $config $custom
+    $global:NotifierTestRequests = @()
 
     # 发送失败默认不阻塞 hook；手动严格测试必须向调用者报告失败。
     function Invoke-RestMethod { throw [InvalidOperationException]::new('fake transport failure') }

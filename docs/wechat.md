@@ -69,7 +69,7 @@ Token 通过 Windows DPAPI 加密，保存到 Codex 目录的 `pushplus-token.dp
 
 点击“保存并测试”前，退出机器人聊天页面，把微信放到后台并锁屏。手机和手环保持蓝牙连接。
 
-电脑显示“微信 ClawBot 聊天推送请求已提交”，只表示 PushPlus 接受请求，**不代表手机或手环已经收到**。先检查机器人聊天里的 **Codex 通知测试**，再检查手环是否振动或显示消息。
+电脑显示“微信 ClawBot 聊天推送请求已提交”，只表示 PushPlus 接受请求，**不代表手机或手环已经收到**。先检查机器人聊天里的 **手机提醒测试**，再检查手环是否振动或显示消息。
 
 需要再发一条，只测微信：
 
@@ -105,7 +105,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\send-test.ps1 -Channel
 
 这里的 `wechat` 表示本工具的微信通道，发送时自动使用 ClawBot，不需要填写额外的微信渠道字段。
 
-`server`、`topic`、`priority`、`tags`、`click`、`authorization` 都属于 ntfy，不用于微信。微信消息显示和点击行为由微信处理。`title`、`inputTitle`、`testTitle` 是两种方式共用的标题。
+`server`、`topic`、`priority`、`tags`、`click`、`authorization` 都属于 ntfy，不用于微信。微信消息显示和点击行为由微信处理。`title`、`inputTitle`、`testTitle` 等标题和 `body` 等正文是两种方式共用的提醒内容，推荐在软件的“提醒内容”页修改。
 
 ## 关闭微信，回到 ntfy
 

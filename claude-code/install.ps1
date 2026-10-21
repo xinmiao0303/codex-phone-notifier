@@ -42,7 +42,6 @@ if ($writeConfig) {
         approvalTitle = 'Claude Code 等待你授权'
         errorTitle = 'Claude Code 出错停止'
         idleTitle = 'Claude Code 仍在等你'
-        testTitle = 'Claude Code 通知测试'
         priority = 'default'
         tags = 'computer,white_check_mark'
         inputTags = 'computer,question'

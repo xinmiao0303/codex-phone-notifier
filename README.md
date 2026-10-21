@@ -26,7 +26,7 @@
 
 [下载 Windows 软件 CodexPhoneNotifier.exe](https://github.com/xinmiao0303/codex-phone-notifier/releases/latest/download/CodexPhoneNotifier.exe) → 双击打开 → 打开需要的 **Codex 提醒** / **Claude Code 提醒** → 选择渠道 → 点击 **一键部署 / 更新**。
 
-窗口里可以分别开关 Codex 与 Claude Code 提醒，开启或关闭 ntfy 和微信、复制订阅主题、保存加密 Token、分别测试、移除一个渠道，或一键卸载两边的通知工具。关闭某个工具的提醒只暂停它，钩子保留，不用重新信任或重启；两个渠道都关闭时暂停全部提醒，配置保留。保存后可以关闭窗口，不用一直开着。
+窗口里可以分别开关 Codex 与 Claude Code 提醒，在 **提醒内容** 页自己编辑每一类提醒的标题和正文（支持 `{电脑}`、`{时间}`、`{项目}` 等占位符，并可发送预览），开启或关闭 ntfy 和微信、复制订阅主题、保存加密 Token、分别测试、移除一个渠道，或一键卸载两边的通知工具。关闭某个工具的提醒只暂停它，钩子保留，不用重新信任或重启；两个渠道都关闭时暂停全部提醒，配置保留。保存后可以关闭窗口，不用一直开着。
 
 手机订阅、微信扫码实名和 Codex 钩子信任仍需自己完成，界面会提供指引；Claude Code 不需要审查钩子，新开会话即生效。[图形界面完整教程与截图](docs/desktop.md)
 
@@ -39,7 +39,7 @@
 | Codex 完成这一轮回复 | Codex 任务已完成 | 回来查看结果 |
 | Codex 弹出选择题或纯文字输入框 | Codex 等待你回答 | 回来选择或输入答案 |
 | 插件弹出原生应用访问确认框，仍在等待答复 | Codex 等待你授权 | 回来检查并选择是否允许 |
-| 你主动发送测试 | Codex 通知测试 | 检查接收是否正常 |
+| 你主动发送测试 | 手机提醒测试（与 Claude Code 共用） | 检查接收是否正常 |
 
 标题和正文默认使用中文。正文只有提醒、电脑名称和时间，不包含聊天内容、代码或问题正文。时间示例：`2026-10-11    08:30:00`，日期和时刻之间四个空格，不显示 `+08:00`。
 
@@ -175,7 +175,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\send-test.ps1 -Channel
 
 | 设置 | 适用范围 |
 | --- | --- |
-| title / inputTitle / approvalTitle / testTitle | 两种通道的中文标题 |
+| title / inputTitle / consentTitle / testTitle | 两种通道的标题，可用占位符 |
+| body / inputBody / consentBody / testBody | 两种通道的正文，可用占位符；留空用默认 |
 | server / topic / authorization | 仅 ntfy：服务器、主题和服务器认证 |
 | priority / tags / inputTags / click | 仅 ntfy：优先级、图标和点击链接 |
 | pushplus-token.dpapi | 仅微信：在本机加密的 PushPlus 密钥，不写进 JSON |
@@ -267,9 +268,9 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\run-claude.ps1
 pwsh.exe -NoProfile -File .\tests\run-claude.ps1
 ~~~
 
-测试无需第三方框架，使用临时目录、测试密钥和模拟 HTTP，不读取真实订阅、不修改真正的 .codex 或 .claude。Windows PowerShell 5.1 与 PowerShell 7.6 均通过基础配置 52 项、事件回归 50 项、真实标准输入 10 项和 Claude Code 94 项检查；GitHub Actions 执行同一套检查。
+测试无需第三方框架，使用临时目录、测试密钥和模拟 HTTP，不读取真实订阅、不修改真正的 .codex 或 .claude。Windows PowerShell 5.1 与 PowerShell 7.6 均通过基础配置 58 项、事件回归 50 项、真实标准输入 10 项和 Claude Code 101 项检查；GitHub Actions 执行同一套检查。
 
-图形界面后端另通过 39 项隔离检查，真实 EXE 通过 9 项集成检查，覆盖两个工具的部署、分别开关、共用渠道与加密 Token、全部暂停和一键卸载。图形界面已渲染检查。
+图形界面后端另通过 49 项隔离检查，真实 EXE 通过 10 项集成检查，覆盖两个工具的部署、分别开关、共用渠道与加密 Token、提醒内容的编辑与预览、全部暂停和一键卸载。图形界面已渲染检查。
 
 2026-10-11 实机验证：ntfy 在 iPhone 上收到完成与输入提醒；微信通过 PushPlus ClawBot 发到机器人聊天，iPhone 和小米手环 9 都实际收到聊天消息。Codex 测试版本为 0.162.0-alpha.17.2。Android 和 Apple Watch 未做本项目的实机验证。
 

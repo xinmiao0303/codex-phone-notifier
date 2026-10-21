@@ -39,7 +39,6 @@ if ($writeConfig) {
         topic = $Topic
         title = 'Codex 任务已完成'
         inputTitle = 'Codex 等待你回答'
-        testTitle = 'Codex 通知测试'
         priority = 'default'
         tags = 'computer,white_check_mark'
         inputTags = 'computer,question'

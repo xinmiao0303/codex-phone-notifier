@@ -8,9 +8,24 @@ param(
     [ValidateSet('all', 'ntfy', 'wechat')]
     [string]$Channel = 'all',
     [switch]$Strict,
-    [object]$HookInput = $null
+    [object]$HookInput = $null,
+    # 图形界面用：按当前配置发一条带“预览”前缀的消息；或只列出默认标题与正文。
+    [switch]$Preview,
+    [switch]$ListContent
 )
 $ErrorActionPreference = 'Stop'
+# 每类提醒的默认标题与正文。配置里的同名键覆盖它们；正文中的占位符发送时替换。
+$templates = [ordered]@{
+    done = [ordered]@{ label='任务完成'; hint='Claude Code 完成这一轮回复时发送。{后台} 只在还有后台命令运行时有内容。'; titleKey='title'; bodyKey='body'; title='Claude Code 任务已完成'; body="Claude Code 已完成这一轮任务，你可以回来查看结果。`n{后台}`n电脑：{电脑}`n时间：{时间}"; placeholders=@('电脑','时间','项目','后台'); legacy=@() }
+    input = [ordered]@{ label='等待回答'; hint='弹出选择题或 MCP 输入表单时发送。'; titleKey='inputTitle'; bodyKey='inputBody'; title='Claude Code 等待你回答'; body="Claude Code 正在等待你选择或回答，请返回电脑处理。`n电脑：{电脑}`n时间：{时间}"; placeholders=@('电脑','时间','项目'); legacy=@() }
+    plan = [ordered]@{ label='确认计划'; hint='计划模式写好计划、等你批准时发送。'; titleKey='planTitle'; bodyKey='planBody'; title='Claude Code 等待你确认计划'; body="Claude Code 已写好执行计划，正在等待你批准或修改。`n电脑：{电脑}`n时间：{时间}"; placeholders=@('电脑','时间','项目'); legacy=@() }
+    approval = [ordered]@{ label='等待授权'; hint='请求工具权限、约 6 秒仍未答复时发送。'; titleKey='approvalTitle'; bodyKey='approvalBody'; title='Claude Code 等待你授权'; body="Claude Code 请求使用工具的权限，几秒内仍未答复，请返回电脑查看授权窗口。`n电脑：{电脑}`n时间：{时间}"; placeholders=@('电脑','时间','项目'); legacy=@() }
+    error = [ordered]@{ label='出错停止'; hint='因限流、登录失效等 API 错误中断时发送。{原因} 是错误类型的中文说明。'; titleKey='errorTitle'; bodyKey='errorBody'; title='Claude Code 出错停止'; body="Claude Code 这一轮因错误中断，需要你回来查看。`n原因：{原因}`n电脑：{电脑}`n时间：{时间}"; placeholders=@('电脑','时间','项目','原因'); legacy=@() }
+    idle = [ordered]@{ label='仍在等你'; hint='回复完约 60 秒仍无操作时发送；需要安装时加 -IdleReminder 开启。'; titleKey='idleTitle'; bodyKey='idleBody'; title='Claude Code 仍在等你'; body="Claude Code 完成回复约一分钟后，仍在等待你的下一条指令。`n电脑：{电脑}`n时间：{时间}"; placeholders=@('电脑','时间','项目'); legacy=@() }
+    # 测试只验证渠道，Codex 与 Claude Code 共用；旧版默认标题按新默认处理。
+    test = [ordered]@{ label='通知测试'; hint='点击测试按钮时发送，Codex 与 Claude Code 共用。'; titleKey='testTitle'; bodyKey='testBody'; title='手机提醒测试'; body="这是一条测试通知。收到它，说明电脑到手机的发送通道可用。`n电脑：{电脑}`n时间：{时间}"; placeholders=@('电脑','时间'); legacy=@('Codex 通知测试','Claude Code 通知测试') }
+}
+if ($ListContent) { return $templates }
 try { [Console]::InputEncoding = [Text.UTF8Encoding]::new($false) } catch { }
 # 安装后独立运行；不依赖仓库中的其他文件。
 if ([string]::IsNullOrWhiteSpace($ConfigPath)) { $ConfigPath = Join-Path $PSScriptRoot 'config.json' }
@@ -29,6 +44,19 @@ function Read-TextOption {
     $entry = $Settings.PSObject.Properties[$Key]
     if ($null -ne $entry -and -not [string]::IsNullOrWhiteSpace([string]$entry.Value)) { return [string]$entry.Value }
     return $Fallback
+}
+function Format-NotifierText {
+    param([string]$Template, [hashtable]$Values, [switch]$Title)
+    # 替换占位符；正文里某一行的占位符全部为空时整行省略。标题只替换，不省略。
+    $pattern = '\{(电脑|时间|项目|原因|后台)\}'
+    $lines = @()
+    foreach ($line in ($Template -replace "`r`n", "`n").Split("`n")) {
+        $found = @([regex]::Matches($line, $pattern) | ForEach-Object { $_.Groups[1].Value })
+        if (-not $Title -and $found.Count -gt 0 -and @($found | Where-Object { $Values[$_] }).Count -eq 0) { continue }
+        $lines += [regex]::Replace($line, $pattern, { param($match) [string]$Values[$match.Groups[1].Value] })
+    }
+    if ($Title) { return ($lines -join ' ').Trim() }
+    return ($lines -join [Environment]::NewLine).Trim()
 }
 function Read-SwitchOption {
     param([object]$Settings, [string]$Key)
@@ -154,7 +182,7 @@ $errorNames = @{
 }
 # Hook 标准输入只在本机解析，不写入日志或手机消息，尤其不泄漏 tool_input 和回复正文。
 $eventKey = ''; $eventTag = ''; $eventOwner = [guid]::NewGuid().ToString('N')
-$kind = $Event; $extraLine = ''
+$kind = $Event; $backgroundNote = ''; $errorReason = ''
 try {
     $settings = [IO.File]::ReadAllText($ConfigPath).TrimStart([char]0xFEFF) | ConvertFrom-Json
 } catch {
@@ -163,7 +191,7 @@ try {
     return
 }
 # 图形界面关闭 Claude Code 提醒时保留钩子，这里静默返回；手动测试不受影响。
-if ($Event -ne 'test' -and $null -ne $settings.PSObject.Properties['enabled'] -and $settings.enabled -eq $false) {
+if ($Event -ne 'test' -and -not $Preview -and $null -ne $settings.PSObject.Properties['enabled'] -and $settings.enabled -eq $false) {
     Write-DeliveryLog ('skip/{0}: reminders-off' -f $Event); return
 }
 if ($Event -eq 'hook') {
@@ -212,7 +240,7 @@ if ($Event -eq 'hook') {
                 if ($agents.Count -gt 0) { Write-DeliveryLog ('skip/done: background-agents={0}' -f $agents.Count); return }
                 if ($crons.Count -gt 0) { Write-DeliveryLog ('skip/done: scheduled-wakeups={0}' -f $crons.Count); return }
             }
-            if ($tasks.Count -gt 0) { $extraLine = '后台还有 {0} 个任务在运行。' -f $tasks.Count }
+            if ($tasks.Count -gt 0) { $backgroundNote = '后台还有 {0} 个任务在运行。' -f $tasks.Count }
             $turn = $prompt
             if (-not $turn) { $turn = Get-NotifierDigest ([string]$HookInput.last_assistant_message) }
             if ($session) { $eventKey = Get-NotifierDigest ('done|' + $session + '|' + $turn) }
@@ -221,7 +249,7 @@ if ($Event -eq 'hook') {
             $code = [string]$HookInput.error
             $reason = $errorNames[$code]
             if (-not $reason) { $reason = '未知错误' }
-            $extraLine = '原因：' + $reason
+            $errorReason = $reason
             if ($session) { $eventKey = Get-NotifierDigest ('error|' + $session + '|' + $prompt + '|' + $code) }
         }
         'approval' {
@@ -258,52 +286,36 @@ try {
     }
     if (@($channels | Where-Object { $_ -notin @('ntfy', 'wechat') }).Count -gt 0) { throw 'Invalid notification channels' }
     switch ($kind) {
-        'done' {
-            $title = Read-TextOption $settings 'title' 'Claude Code 任务已完成'
-            $summary = 'Claude Code 已完成这一轮任务，你可以回来查看结果。'
-            $tags = Read-TextOption $settings 'tags' 'computer,white_check_mark'
-        }
-        'input' {
-            $title = Read-TextOption $settings 'inputTitle' 'Claude Code 等待你回答'
-            $summary = 'Claude Code 正在等待你选择或回答，请返回电脑处理。'
-            $tags = Read-TextOption $settings 'inputTags' 'computer,question'
-        }
-        'plan' {
-            $title = Read-TextOption $settings 'planTitle' 'Claude Code 等待你确认计划'
-            $summary = 'Claude Code 已写好执行计划，正在等待你批准或修改。'
-            $tags = Read-TextOption $settings 'inputTags' 'computer,question'
-        }
-        'approval' {
-            $title = Read-TextOption $settings 'approvalTitle' 'Claude Code 等待你授权'
-            $summary = 'Claude Code 请求使用工具的权限，几秒内仍未答复，请返回电脑查看授权窗口。'
-            $tags = 'computer,lock'
-        }
-        'error' {
-            $title = Read-TextOption $settings 'errorTitle' 'Claude Code 出错停止'
-            $summary = 'Claude Code 这一轮因错误中断，需要你回来查看。'
-            $tags = 'computer,warning'
-        }
-        'idle' {
-            $title = Read-TextOption $settings 'idleTitle' 'Claude Code 仍在等你'
-            $summary = 'Claude Code 完成回复约一分钟后，仍在等待你的下一条指令。'
-            $tags = 'computer,hourglass'
-        }
-        'test' {
-            $title = Read-TextOption $settings 'testTitle' 'Claude Code 通知测试'
-            $summary = '这是一条测试通知。收到它，说明电脑到手机的发送通道可用。'
-            $tags = 'computer,test_tube'
-        }
+        'done' { $tags = Read-TextOption $settings 'tags' 'computer,white_check_mark' }
+        'input' { $tags = Read-TextOption $settings 'inputTags' 'computer,question' }
+        'plan' { $tags = Read-TextOption $settings 'inputTags' 'computer,question' }
+        'approval' { $tags = 'computer,lock' }
+        'error' { $tags = 'computer,warning' }
+        'idle' { $tags = 'computer,hourglass' }
+        'test' { $tags = 'computer,test_tube' }
+    }
+    $template = $templates[$kind]
+    $title = Read-TextOption $settings $template.titleKey ''
+    if ($title -in $template.legacy) { $title = '' }
+    if (-not $title) { $title = $template.title }
+    $body = Read-TextOption $settings $template.bodyKey ''
+    if (-not $body) {
+        $body = $template.body
+        # 旧配置的 showProject：没有自定义正文时，在时间前加一行项目名。
+        if (Read-SwitchOption $settings 'showProject') { $body = $body.Replace('时间：{时间}', "项目：{项目}`n时间：{时间}") }
     }
     $computer = $env:COMPUTERNAME
     if ([string]::IsNullOrWhiteSpace($computer)) { $computer = '这台电脑' }
-    $lines = @($summary)
-    if ($extraLine) { $lines += $extraLine }
-    $lines += '电脑：' + $computer
-    if ((Read-SwitchOption $settings 'showProject') -and $null -ne $HookInput -and $HookInput.cwd) {
-        $lines += '项目：' + [IO.Path]::GetFileName(([string]$HookInput.cwd).TrimEnd('\', '/'))
-    }
-    $lines += '时间：' + (Get-Date -Format 'yyyy-MM-dd    HH:mm:ss')
-    $message = $lines -join [Environment]::NewLine
+    $project = ''
+    if ($null -ne $HookInput -and $HookInput.cwd) { $project = [IO.Path]::GetFileName(([string]$HookInput.cwd).TrimEnd('\', '/')) }
+    if ($Preview) { $project = '示例项目'; $errorReason = '达到速率或用量限制'; $backgroundNote = '后台还有 1 个任务在运行。' }
+    $values = @{ '电脑'=$computer; '时间'=(Get-Date -Format 'yyyy-MM-dd    HH:mm:ss'); '项目'=$project; '原因'=$errorReason; '后台'=$backgroundNote }
+    # 自定义内容替换后为空时退回默认，避免发出空白通知。
+    $title = Format-NotifierText $title $values -Title
+    if (-not $title) { $title = Format-NotifierText $template.title $values -Title }
+    $message = Format-NotifierText $body $values
+    if (-not $message) { $message = Format-NotifierText $template.body $values }
+    if ($Preview) { $title = '预览 · ' + $title }
 } catch {
     Write-DeliveryLog ('error/{0}: {1}' -f $kind, $_.Exception.GetType().Name)
     if ($Strict) { throw ('通知配置无法读取，请检查：' + $ConfigPath) }
