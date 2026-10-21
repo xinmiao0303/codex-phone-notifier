@@ -11,7 +11,7 @@ if (-not [IO.File]::Exists($compiler)) { throw '找不到 Windows .NET Framework
 & (Join-Path $PSScriptRoot 'desktop\build-icon.ps1')
 $output = Join-Path $OutputDirectory 'CodexPhoneNotifier.exe'
 $arguments = @('/nologo', '/target:winexe', '/optimize+', '/platform:anycpu', '/utf8output', ('/out:' + $output), '/reference:System.dll', '/reference:System.Core.dll', '/reference:System.Drawing.dll', '/reference:System.Windows.Forms.dll', '/reference:System.Web.Extensions.dll', ('/win32icon:' + (Join-Path $PSScriptRoot 'desktop/assets/taskbar-light.ico')), ('/resource:' + (Join-Path $PSScriptRoot 'desktop/assets/notifier.ico') + ',brand.icon'), ('/resource:' + (Join-Path $PSScriptRoot 'desktop/assets/taskbar-light.ico') + ',brand.taskbar'))
-foreach ($relative in @('install.ps1','uninstall.ps1','review-hooks.ps1','scripts/common.ps1','scripts/notify.ps1','scripts/mcp-consent.ps1','desktop/McpConsentProxy.cs','desktop/desktop-backend.ps1','desktop/assets/LUCIDE-LICENSE.txt','desktop/assets/LOBE-ICONS-LICENSE.txt','desktop/assets/ICON-NOTICE.txt','LICENSE')) {
+foreach ($relative in @('install.ps1','uninstall.ps1','review-hooks.ps1','scripts/common.ps1','scripts/notify.ps1','scripts/mcp-consent.ps1','scripts/claude-common.ps1','scripts/claude-notify.ps1','claude-code/install.ps1','claude-code/uninstall.ps1','desktop/McpConsentProxy.cs','desktop/desktop-backend.ps1','desktop/assets/LUCIDE-LICENSE.txt','desktop/assets/LOBE-ICONS-LICENSE.txt','desktop/assets/ICON-NOTICE.txt','LICENSE')) {
     $arguments += '/resource:' + (Join-Path $PSScriptRoot $relative) + ',payload.' + $relative.Replace('/', '.')
 }
 $arguments += Join-Path $PSScriptRoot 'desktop/Program.cs'

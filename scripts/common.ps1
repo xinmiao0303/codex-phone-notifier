@@ -10,7 +10,12 @@ function Read-NotifierJson {
     param([string]$Path)
     if (-not [IO.File]::Exists($Path)) { return [pscustomobject]@{} }
     try {
-        $document = [IO.File]::ReadAllText($Path) | ConvertFrom-Json
+        # PowerShell 7 默认把日期字符串转成 DateTime，写回时会改动其他工具的设置。
+        $options = @{}
+        if ((Get-Command ConvertFrom-Json).Parameters.ContainsKey('DateKind')) { $options.DateKind = 'String' }
+        $text = [IO.File]::ReadAllText($Path).TrimStart([char]0xFEFF)
+        if ([string]::IsNullOrWhiteSpace($text)) { return [pscustomobject]@{} }
+        $document = $text | ConvertFrom-Json @options
         if ($null -eq $document -or $document -is [array] -or $document -is [string] -or $document -is [ValueType]) { throw 'JSON root must be an object' }
         return $document
     } catch { throw ('无法读取配置文件，请先修复它，再重新运行：' + $Path) }

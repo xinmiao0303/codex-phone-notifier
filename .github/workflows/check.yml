@@ -34,6 +34,12 @@ jobs:
       - name: Verify native MCP consent relay and restoration (PowerShell 7)
         shell: pwsh
         run: .\tests\run-consent.ps1
+      - name: Verify Claude Code reminders (Windows PowerShell)
+        shell: powershell
+        run: .\tests\run-claude.ps1
+      - name: Verify Claude Code reminders (PowerShell 7)
+        shell: pwsh
+        run: .\tests\run-claude.ps1
       - name: Build Windows desktop app
         shell: powershell
         run: .\build-desktop.ps1
