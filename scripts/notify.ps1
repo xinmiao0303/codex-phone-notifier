@@ -172,6 +172,12 @@ function Set-EventReservation {
 # Hook stdin 只在本机解析，不写入日志或手机消息，尤其不泄漏 tool_input。
 # 兼容 Codex 当前进程缓存的 0.5.0 授权钩子：静默返回，不发送也不作审批决定。
 if ($Event -eq 'approval') { Write-DeliveryLog 'skip/approval: disabled'; return }
+# 图形界面关闭 Codex 提醒时保留钩子，这里静默返回，不用重新信任钩子或重启；手动测试不受影响。
+if ($Event -ne 'test') {
+    $switches=$null
+    try { $switches=[IO.File]::ReadAllText($ConfigPath) | ConvertFrom-Json } catch { }
+    if ($null -ne $switches -and $null -ne $switches.PSObject.Properties['enabled'] -and $switches.enabled -eq $false) { Write-DeliveryLog ('skip/{0}: reminders-off' -f $Event); return }
+}
 $eventKey=''; $eventOwner=[guid]::NewGuid().ToString('N')
 if ($Event -eq 'consent') {
     if ($ConsentId -notmatch '^[a-f0-9]{64}$') { Write-DeliveryLog 'skip/consent: missing-request-id'; return }

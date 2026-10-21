@@ -1,8 +1,10 @@
-# Codex 手机提醒
+# Codex 与 Claude Code 手机提醒
 
-**Codex 做完这一轮任务，或者正在等你选择、回答或允许访问应用时，让手机提醒你。**
+**Codex 或 Claude Code 做完这一轮任务，或者正在等你选择、回答、确认计划或允许操作时，让手机提醒你。**
 
-适合在 Windows 电脑上使用 Codex 的人。你可以离开电脑去做其他事情，收到提醒后再回来继续。这个工具负责通知，不会替你回答问题或批准操作。
+适合在 Windows 电脑上使用 Codex、Claude Code 的人。你可以离开电脑去做其他事情，收到提醒后再回来继续。这个工具负责通知，不会替你回答问题或批准操作。
+
+两个工具共用同一套通知渠道（ntfy、微信），在图形界面里可以**分别开启或关闭 Codex 提醒和 Claude Code 提醒**，一键部署、一键卸载。只用其中一个工具也可以。Claude Code 的详细说明见 [Claude Code 提醒教程](docs/claude-code.md)。
 
 ## 先选一种通知方式
 
@@ -22,11 +24,11 @@
 
 ## 推荐使用图形界面
 
-[下载 Windows 软件 CodexPhoneNotifier.exe](https://github.com/xinmiao0303/codex-phone-notifier/releases/latest/download/CodexPhoneNotifier.exe) → 双击打开 → 选择渠道 → 点击 **安装 / 更新通知工具**。
+[下载 Windows 软件 CodexPhoneNotifier.exe](https://github.com/xinmiao0303/codex-phone-notifier/releases/latest/download/CodexPhoneNotifier.exe) → 双击打开 → 打开需要的 **Codex 提醒** / **Claude Code 提醒** → 选择渠道 → 点击 **一键部署 / 更新**。
 
-窗口里可以开启或关闭 ntfy 和微信、复制订阅主题、保存加密 Token、分别测试、移除一个渠道或卸载整个通知工具。两个渠道都关闭时暂停全部提醒，配置保留。保存后可以关闭窗口，不用一直开着。
+窗口里可以分别开关 Codex 与 Claude Code 提醒，开启或关闭 ntfy 和微信、复制订阅主题、保存加密 Token、分别测试、移除一个渠道，或一键卸载两边的通知工具。关闭某个工具的提醒只暂停它，钩子保留，不用重新信任或重启；两个渠道都关闭时暂停全部提醒，配置保留。保存后可以关闭窗口，不用一直开着。
 
-手机订阅、微信扫码实名和 Codex 钩子信任仍需自己完成，界面会提供指引。[图形界面完整教程与截图](docs/desktop.md)
+手机订阅、微信扫码实名和 Codex 钩子信任仍需自己完成，界面会提供指引；Claude Code 不需要审查钩子，新开会话即生效。[图形界面完整教程与截图](docs/desktop.md)
 
 ## 会收到什么？
 
@@ -50,6 +52,18 @@
 普通 `PermissionRequest`、命令提权及网络自动审批继续不提醒。当前只接入本地 `node_repl` 的 MCP 原生交互，不覆盖 Windows UAC、系统权限窗口或其他无关软件的弹窗。原生连接需要完整退出所有 Codex 窗口后重新打开；实际手机送达还需按下文测试。安装器通过 Codex 现有的 `CODEX_NODE_REPL_PATH` 用户环境设置登记转发程序，避免启动时配置被重新生成而失效；卸载时会恢复这个设置。其他自定义运行程序不会被覆盖。
 
 会话记录格式属于 Codex 内部实现，可能随版本变化；遇到无法识别或不能确认结束的记录时，脚本会跳过完成提醒并记录原因，不会猜测任务已经完成。
+
+### Claude Code 会收到什么？
+
+| 什么时候 | 默认通知标题 |
+| --- | --- |
+| Claude Code 完成这一轮回复 | Claude Code 任务已完成 |
+| 弹出选择题，或 MCP 服务弹出输入表单 | Claude Code 等待你回答 |
+| 计划模式写好计划，等你批准 | Claude Code 等待你确认计划 |
+| 请求使用工具的权限，约 6 秒仍未答复 | Claude Code 等待你授权 |
+| 因限流、登录失效、服务繁忙等 API 错误中断 | Claude Code 出错停止 |
+
+桌面版 Code 标签、终端里的 `claude`、VS Code 插件都读取同一份 `~/.claude/settings.json`，部署一次全部生效。后台子代理或定时唤醒还会让 Claude 自动继续时不报完成；你按 Esc 中断、`claude -p` 脚本和被自动批准的操作不提醒；桌面版里选择题同时触发授权通知时只提醒一次。正文同样只有提醒、电脑名称和时间。详见 [Claude Code 提醒教程](docs/claude-code.md)。
 
 ## 两种方式分别怎么工作？
 
@@ -237,6 +251,10 @@ Get-Content "$HOME\.codex\ntfy-codex.log" -Tail 20
 | tests/run-hook-stdin.ps1 | Windows PowerShell 真实标准输入、中文、表情及 BOM 检查 |
 | desktop/McpConsentProxy.cs / scripts/mcp-consent.ps1 | 原生授权的 MCP 转发、自动安装和恢复原启动器 |
 | tests/run-consent.ps1 | MCP 消息保真、答复取消、重复事件、安装升级和卸载恢复检查 |
+| docs/claude-code.md | Claude Code 提醒的触发场景、安装、设置和排查 |
+| claude-code/ | Claude Code 的命令行安装、卸载、测试和微信连接脚本 |
+| scripts/claude-notify.ps1 / scripts/claude-common.ps1 | 解析 Claude Code 钩子事件并发送；登记和移除 settings.json 中的钩子 |
+| tests/run-claude.ps1 | Claude Code 事件归类、去重、暂停、导入 Codex 设置、真实子进程和卸载检查 |
 
 ~~~powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\run.ps1
@@ -245,11 +263,13 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\run-hook-events.
 pwsh.exe -NoProfile -File .\tests\run-hook-events.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\run-hook-stdin.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\run-consent.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\run-claude.ps1
+pwsh.exe -NoProfile -File .\tests\run-claude.ps1
 ~~~
 
-测试无需第三方框架，使用临时目录、测试密钥和模拟 HTTP，不读取真实订阅、不修改真正的 .codex。Windows PowerShell 5.1 与 PowerShell 7.6 均通过基础配置 52 项、事件回归 50 项和真实标准输入 10 项检查；GitHub Actions 执行同一套检查。
+测试无需第三方框架，使用临时目录、测试密钥和模拟 HTTP，不读取真实订阅、不修改真正的 .codex 或 .claude。Windows PowerShell 5.1 与 PowerShell 7.6 均通过基础配置 52 项、事件回归 50 项、真实标准输入 10 项和 Claude Code 94 项检查；GitHub Actions 执行同一套检查。
 
-图形界面后端另通过 19 项隔离检查，真实 EXE 通过 7 项集成检查，覆盖安装、加密、渠道开关、全部暂停和卸载。图形界面已渲染检查。
+图形界面后端另通过 39 项隔离检查，真实 EXE 通过 9 项集成检查，覆盖两个工具的部署、分别开关、共用渠道与加密 Token、全部暂停和一键卸载。图形界面已渲染检查。
 
 2026-10-11 实机验证：ntfy 在 iPhone 上收到完成与输入提醒；微信通过 PushPlus ClawBot 发到机器人聊天，iPhone 和小米手环 9 都实际收到聊天消息。Codex 测试版本为 0.162.0-alpha.17.2。Android 和 Apple Watch 未做本项目的实机验证。
 
